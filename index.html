@@ -321,6 +321,7 @@ const summary = s => s.items.map(itemText).join(' · ');
 const setsText = (it, ex) => it.sets.map(x => it.fields.map(k => x[k] ? `${x[k]}${k === 'd' ? ex.unit : ''}` : '').filter(Boolean).join(' × ')).filter(Boolean).join(' · ');
 function wodResult(it) { const r = it.res || {}; if (r.time) return r.time; if (r.rounds) return `${r.rounds}R${r.reps ? ' + ' + r.reps : ''}`; if (r.reps) return `${r.reps}렙`; return r.text || ''; }
 function bestWod(id, exceptSessionId) {
+  if (!id) return null;
   const res = [];
   for (const s of state.sessions) if (s.id !== exceptSessionId) for (const it of s.items) if (it.type === 'wod' && it.wodId === id) res.push({s, it});
   if (!res.length) return null;
@@ -431,7 +432,8 @@ function pageDay() {
         <div class="row" style="align-items:flex-end;margin-top:4px"><span class="n" style="font-size:92px">${Math.round(hero.v*10)/10}</span><span class="unit" style="color:var(--lime-sub);font-size:20px">KG</span></div>
         <div class="row between sub"><span>최고 세트 ${hero.w}kg × ${hero.r}</span><span>${prevBest ? `이전 최고 ${Math.round(prevBest*10)/10}kg` : '첫 기록'}</span></div></button>`; }
     const wodHero = s.items.filter(i => i.type === 'wod').map(it => { const b = bestWod(it.wodId, s.id); return `<div class="hero"><div class="row between"><span class="eb" style="font-weight:700">${esc(it.name)} · ${FORMATS[it.format]?.label || ''}</span><span class="pill" style="background:#000;color:var(--lime);border-color:#000;font-weight:700">${esc(it.scale || 'Rx')}</span></div>
-      <div class="n" style="font-size:100px;margin-top:2px">${esc(wodResult(it) || '-')}</div><div class="sub">${b ? `이전 최고 ${esc(b.txt)}` : '첫 기록'}${it.res?.partner ? ` · 파트너 ${esc(it.res.partner)}` : ''}</div></div>`; }).join('');
+      <div class="n" style="font-size:100px;margin-top:2px">${esc(wodResult(it) || '-')}</div><div class="sub">${it.daily ? '' : b ? `이전 최고 ${esc(b.txt)}` : '첫 기록'}${it.res?.partner ? ` · 파트너 ${esc(it.res.partner)}` : ''}</div>
+      ${it.moves?.length ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.moves.map(m => esc([m.a, m.n].filter(Boolean).join(' '))).join('<br>')}</div>` : ''}</div>`; }).join('');
     return `<div><div class="eb">${s.mood ? `${s.mood} ${MOODS.find(m => m[0] === s.mood)?.[1] || ''}` : ''}</div><h1 class="disp" style="font-size:52px;margin-top:4px">${esc(s.title || '운동')}</h1>
       <div class="sub" style="margin-top:6px">${[s.duration ? `${s.duration}분` : '', s.place, plan ? `${repeatText(plan)} 계획` : ''].filter(Boolean).map(esc).join(' · ')}</div></div>
       ${heroHtml}${wodHero}
@@ -463,7 +465,7 @@ function pageEdit() {
   <input class="inp big" id="dTitle" data-d="title" value="${esc(d.title)}" placeholder="운동 이름 (예: 하체 데이)" aria-label="운동 이름">
   <div><div class="eb" style="margin-bottom:8px">오늘 컨디션</div><div class="chips">${MOODS.map(([e, l]) => `<button class="chip" aria-pressed="${d.mood === e}" data-action="mood" data-v="${e}">${e} ${l}</button>`).join('')}</div></div>
   ${d.items.map((it, i) => it.type === 'wod' ? wodEditCard(it, i) : exEditCard(it, i)).join('') || '<div class="card empty">아래에서 운동이나 와드를 추가해 주세요.</div>'}
-  <div class="row" style="gap:10px"><button class="btn out small" data-action="pick-ex">+ 운동 추가</button><button class="btn out small" data-action="pick-wod">+ 와드 추가</button></div>
+  <button class="btn out small" data-action="pick-ex">+ 운동 · 와드 추가</button>
   <div class="field"><span class="eb">메모</span><textarea class="inp" id="dMemo" data-d="memo" placeholder="오늘 느낀 점, 다음에 신경 쓸 것">${esc(d.memo)}</textarea></div>
   <input class="inp" id="dPlace" data-d="place" value="${esc(d.place)}" placeholder="장소 (선택)" aria-label="장소">`;
 }
@@ -480,17 +482,33 @@ function exEditCard(it, i) {
     <div class="row" style="gap:8px"><button class="add" data-action="add-set" data-i="${i}">+ 세트 추가</button>${it.sets.length > 1 ? `<button class="add" style="width:auto;padding:9px 14px" data-action="del-set" data-i="${i}">− 마지막 세트</button>` : ''}</div>
   </div>`;
 }
-function wodEditCard(it, i) {
+const dailyMoves = it => (it.text || '').split('\n').map(x => x.trim()).filter(Boolean).map(n => ({a:'', n}));
+function wodResultBox(it, i) {
   const F = FORMATS[it.format] || FORMATS.custom, b = bestWod(it.wodId, ui.draft.id);
+  return `<div class="hero" style="display:flex;flex-direction:column;gap:10px">
+      <div class="row between"><span class="eb" style="font-weight:700">결과</span><div class="row" style="gap:4px">${['Rx','Scaled'].map(s => `<button class="pill" style="${it.scale === s ? 'background:#000;color:var(--lime);border-color:#000;font-weight:700' : 'border-color:#000;color:#000'}" data-action="scale" data-i="${i}" data-v="${s}">${s}</button>`).join('')}</div></div>
+      <div class="res">${F.res.map(k => `<label>${resLabel(it.format, k)}<input class="${k === 'partner' || k === 'text' ? 'txt' : ''}" data-i="${i}" data-res="${k}" inputmode="${k === 'rounds' || k === 'reps' ? 'numeric' : 'text'}" value="${esc(it.res?.[k] ?? '')}" placeholder="${k === 'time' ? '0:00' : k === 'partner' ? '이름' : k === 'text' ? '결과' : '0'}"></label>`).join('')}</div>
+      ${it.daily ? '' : b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 와드의 첫 기록이에요</div>'}
+    </div>`;
+}
+function dailyWodCard(it, i) {
+  return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="row between"><span class="pill lime">오늘의 와드</span><button class="icon" data-action="remove-item" data-i="${i}" aria-label="오늘의 와드 빼기">✕</button></div>
+    <input class="inp big" data-dw="name" data-i="${i}" value="${esc(it.name)}" placeholder="와드 이름 (선택)" aria-label="와드 이름" style="font-family:var(--num);font-weight:800;font-size:28px">
+    <div class="chips">${Object.entries(FORMATS).map(([k, f]) => `<button class="chip sm" aria-pressed="${it.format === k}" data-action="dw-format" data-i="${i}" data-v="${k}">${f.label}</button>`).join('')}</div>
+    <textarea class="inp" data-dw="text" data-i="${i}" rows="5" placeholder="화이트보드에 적힌 그대로 적어 주세요&#10;예) 21-15-9&#10;스러스터 43kg&#10;풀업" aria-label="와드 내용" style="line-height:1.6">${esc(it.text || '')}</textarea>
+    ${wodResultBox(it, i)}
+    ${it.savedId ? '<div class="sub">내 와드에도 저장했어요</div>' : `<button class="add" data-action="dw-save" data-i="${i}">이 와드를 내 와드에도 저장 (선택)</button>`}
+  </div>`;
+}
+function wodEditCard(it, i) {
+  if (it.daily) return dailyWodCard(it, i);
+  const F = FORMATS[it.format] || FORMATS.custom;
   return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="row between" style="align-items:flex-end"><span class="n" style="font-size:52px;text-transform:uppercase">${esc(it.name)}</span><button class="icon" data-action="remove-item" data-i="${i}" aria-label="${esc(it.name)} 빼기">✕</button></div>
     <div class="row wrap" style="gap:6px"><span class="pill lime">${F.label.toUpperCase()}</span>${it.scheme ? `<span class="pill">${esc(it.scheme)}</span>` : ''}${it.rounds ? `<span class="pill">${it.rounds}라운드</span>` : ''}${it.cap ? `<span class="pill">${it.cap}분</span>` : ''}</div>
     <div class="moves">${it.moves.map(m => `<div><b>${esc(m.a)}</b><span>${esc(m.n)}</span></div>`).join('')}</div>
-    <div class="hero" style="display:flex;flex-direction:column;gap:10px">
-      <div class="row between"><span class="eb" style="font-weight:700">결과</span><div class="row" style="gap:4px">${['Rx','Scaled'].map(s => `<button class="pill" style="${it.scale === s ? 'background:#000;color:var(--lime);border-color:#000;font-weight:700' : 'border-color:#000;color:#000'}" data-action="scale" data-i="${i}" data-v="${s}">${s}</button>`).join('')}</div></div>
-      <div class="res">${F.res.map(k => `<label>${resLabel(it.format, k)}<input class="${k === 'partner' || k === 'text' ? 'txt' : ''}" data-i="${i}" data-res="${k}" inputmode="${k === 'rounds' || k === 'reps' ? 'numeric' : 'text'}" value="${esc(it.res?.[k] ?? '')}" placeholder="${k === 'time' ? '0:00' : k === 'partner' ? '이름' : k === 'text' ? '결과' : '0'}"></label>`).join('')}</div>
-      ${b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 와드의 첫 기록이에요</div>'}
-    </div></div>`;
+    ${wodResultBox(it, i)}</div>`;
 }
 
 /* plan editor */
@@ -530,6 +548,7 @@ function viewWod() {
         ${b ? `<div class="row" style="gap:8px"><span class="eb">내 최고</span><span class="n" style="font-size:24px;color:var(--lime)">${esc(b.txt)}</span></div>` : ''}</button>`; }).join('') || '<div class="empty">저장한 와드가 없어요.</div>'); }
   return `<div class="row between"><span class="eb">와드</span><span class="pill">${NAMED.length + state.mine.length}개</span></div>
   <h1 class="disp" style="font-size:64px">와드</h1>
+  <button class="hero" data-action="record-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:26px;display:block">오늘의 와드 바로 기록</span><span class="sub" style="display:block;margin-top:4px">저장할 필요 없이 그날 와드 내용과 결과만 적어요</span></button>
   <div class="row" style="gap:6px">${[['named','네임드'],['mine','내 와드'],['formats','운동 방식']].map(([k, l]) => `<button class="pill" aria-pressed="${t === k}" data-action="wod-tab" data-v="${k}">${l}</button>`).join('')}</div>
   ${body}`;
 }
@@ -619,20 +638,20 @@ function sheetPlanDetail(id, ds) {
     <div class="row" style="gap:8px">${p.repeat !== 'none' ? `<button class="btn out small" data-action="skip-plan" data-id="${p.id}" data-date="${ds}">이번만 건너뛰기</button>` : ''}<button class="btn out small" data-action="edit-plan" data-id="${p.id}">계획 수정</button></div>`);
 }
 function pickList() {
-  const q = ui.pickQ.trim(), list = state.exercises.filter(e => (ui.pickCat === 'all' || e.cat === ui.pickCat) && (!q || e.name.includes(q)));
-  return list.map(e => `<button class="it" data-action="add-ex" data-id="${e.id}"><span class="bar" style="background:${catOf(e.cat).color};height:18px"></span><span class="grow t">${esc(e.name)}</span><span class="pill">추가</span></button>`).join('') || '<div class="empty">찾는 운동이 없어요.</div>';
+  const q = ui.pickQ.trim().toLowerCase(), c = ui.pickCat;
+  const exs = c === 'wod' ? [] : state.exercises.filter(e => (c === 'all' || e.cat === c) && (!q || e.name.toLowerCase().includes(q)));
+  const wods = c === 'all' || c === 'wod' ? [['내 와드', state.mine], ['네임드 와드', NAMED]].map(([t, l]) => [t, l.filter(w => !q || w.name.toLowerCase().includes(q))]).filter(([, l]) => l.length) : [];
+  const exHtml = exs.length ? `${wods.length ? '<div class="eb">운동</div>' : ''}<div class="card list" style="padding:2px 16px">${exs.map(e => `<button class="it" data-action="add-ex" data-id="${e.id}"><span class="bar" style="background:${catOf(e.cat).color};height:18px"></span><span class="grow t">${esc(e.name)}</span><span class="pill">추가</span></button>`).join('')}</div>` : '';
+  const wodHtml = wods.map(([t, l]) => `<div class="eb">${t}</div><div class="card list" style="padding:2px 16px">${l.map(w => `<button class="it" data-action="add-wod" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:18px"></span><span class="grow"><span class="t" style="display:block">${esc(w.name)}</span><span class="meta" style="display:block">${FORMATS[w.format].label} · ${esc(w.moves.map(m => m.n).join(', '))}</span></span><span class="pill">추가</span></button>`).join('')}</div>`).join('');
+  return exHtml + wodHtml || '<div class="empty">찾는 운동이 없어요. 위의 + 새 운동으로 만들 수 있어요.</div>';
 }
 function sheetPickEx() {
   ui.sheet = sheetPickEx;
-  openSheet(`<div class="row between"><h2 class="disp" style="font-size:30px">운동 추가</h2><button class="pill lime" data-action="edit-ex" data-from="pick">+ 새 운동</button></div>
-    <input class="search" id="pickQ" type="search" placeholder="운동 이름 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
-    <div class="chips">${[{k:'all', label:'전체'}, ...CATS].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
-    <div class="card list" id="pickList" style="padding:2px 16px">${pickList()}</div>`);
-}
-function sheetPickWod() {
-  ui.sheet = sheetPickWod;
-  openSheet(`<div class="row between"><h2 class="disp" style="font-size:30px">와드 추가</h2><button class="pill lime" data-action="new-wod" data-from="pick">+ 직접 만들기</button></div>
-    ${[['내 와드', state.mine], ['네임드 와드', NAMED]].filter(([, l]) => l.length).map(([t, l]) => `<div class="eb">${t}</div><div class="card list" style="padding:2px 16px">${l.map(w => `<button class="it" data-action="add-wod" data-id="${w.id}"><span class="grow"><span class="n" style="font-size:24px;text-transform:uppercase;display:block">${esc(w.name)}</span><span class="meta" style="display:block">${FORMATS[w.format].label} · ${esc(w.moves.map(m => m.n).join(', '))}</span></span><span class="pill">추가</span></button>`).join('')}</div>`).join('')}`);
+  openSheet(`<div class="row between"><h2 class="disp" style="font-size:30px">운동 · 와드 추가</h2><button class="pill lime" data-action="edit-ex" data-from="pick">+ 새 운동</button></div>
+    <button class="hero" data-action="add-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:24px;display:block">오늘의 와드 바로 적기</span><span class="sub" style="display:block;margin-top:4px">저장 없이 그날 와드 내용과 결과만 적어요</span></button>
+    <input class="search" id="pickQ" type="search" placeholder="운동이나 와드 이름 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
+    <div class="chips">${[{k:'all', label:'전체'}, ...CATS.slice(0, 4), {k:'wod', label:'와드'}, CATS[4]].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
+    <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`);
 }
 function sheetWod(id) {
   ui.sheet = () => sheetWod(id);
@@ -704,6 +723,7 @@ const A = {
   'cancel-edit': () => { const dirty = ui.draft.items.length || ui.draft.memo || ui.draft.title; if (dirty && !ui.draft.id && ui.confirm !== 'cancel') { ui.confirm = 'cancel'; return render(true); } ui.page = ui.draft.id ? 'day' : null; ui.confirm = null; render(); },
   'save-edit': () => {
     const d = ui.draft;
+    d.items = d.items.filter(it => !it.daily || dailyMoves(it).length || wodResult(it)).map(it => it.daily ? {...it, name:it.name.trim() || '오늘의 와드', moves:dailyMoves(it)} : it);
     d.items = d.items.map(it => it.type === 'ex' ? {...it, sets:it.sets.filter(s => it.fields.some(k => s[k] !== undefined && s[k] !== ''))} : it).filter(it => it.type === 'wod' || it.sets.length);
     if (!d.items.length) { toast('운동을 하나 이상 기록해 주세요'); return render(true); }
     if (!d.title) d.title = d.items.map(it => it.type === 'wod' ? it.name : exById(it.exId)?.name).slice(0, 2).join(' + ');
@@ -715,7 +735,13 @@ const A = {
   'pick-ex': () => { ui.pickQ = ''; sheetPickEx(); },
   'pick-cat': el => { ui.pickCat = el.dataset.v; refreshSheet(); },
   'add-ex': el => { const it = exItem(el.dataset.id, ui.draft.date); ui.draft.items.push(it); closeSheet(); render(true); toast(it.prefilled ? '지난 기록을 채웠어요' : '운동을 추가했어요'); setTimeout(() => $('#screen').scrollTo({top:$('#screen').scrollHeight, behavior:'smooth'}), 30); },
-  'pick-wod': () => sheetPickWod(),
+  'record-daily': () => { const d = newDraft(recordDate()); openEditor(d); A['add-daily'](); },
+  'add-daily': () => { ui.draft.items.push({type:'wod', id:uid(), daily:true, wodId:null, name:'', format:'fortime', text:'', moves:[], scale:'Rx', res:{}}); closeSheet(); render(true); setTimeout(() => { const t = document.querySelectorAll('[data-dw="text"]'); t[t.length - 1]?.scrollIntoView({block:'center'}); }, 30); },
+  'dw-format': el => { const it = ui.draft.items[+el.dataset.i]; it.format = el.dataset.v; it.res = {}; render(true); },
+  'dw-save': el => { const it = ui.draft.items[+el.dataset.i], moves = dailyMoves(it);
+    if (!moves.length) { toast('와드 내용을 먼저 적어 주세요'); return; }
+    const w = {id:uid(), name:(it.name.trim() && it.name.trim() !== '오늘의 와드') ? it.name.trim() : `${md(ui.draft.date)} 와드`, format:it.format, cap:'', rounds:'', moves, note:''}; state.mine.unshift(w); save();
+    it.savedId = w.id; it.name = w.name; render(true); toast('내 와드에 저장했어요'); },
   'add-wod': el => { ui.draft.items.push(wodItem(wodById(el.dataset.id))); if (!ui.draft.title) ui.draft.title = `와드 · ${wodById(el.dataset.id).name}`; closeSheet(); render(true); },
   'record-wod': el => { const w = wodById(el.dataset.id); if (ui.page === 'edit') { ui.draft.items.push(wodItem(w)); closeSheet(); return render(true); } const d = newDraft(recordDate()); d.items.push(wodItem(w)); d.title = `와드 · ${w.name}`; openEditor(d); },
   'remove-item': el => { ui.draft.items.splice(+el.dataset.i, 1); render(true); },
@@ -826,6 +852,7 @@ document.addEventListener('input', e => {
   const t = e.target, ds = t.dataset;
   if (ds.d) { ui.draft[ds.d] = t.value; if (ds.d === 'date') { if (!t.value) ui.draft.date = TODAY(); else if (t.value > TODAY()) { ui.draft.date = TODAY(); toast('기록은 오늘까지 쓸 수 있어요'); } render(true); } return; }
   if (ds.f && ds.s !== undefined) { ui.draft.items[+ds.i].sets[+ds.s][ds.f] = t.value; return; }
+  if (ds.dw) { ui.draft.items[+ds.i][ds.dw] = t.value; return; }
   if (ds.res) { const it = ui.draft.items[+ds.i]; it.res = {...(it.res || {}), [ds.res]:t.value}; return; }
   if (ds.p) { ui.pdraft[ds.p] = t.value; if (ds.p === 'start') { if (!t.value) ui.pdraft.start = TODAY(); if (ui.pdraft.repeat === 'weekly' && ui.pdraft.days.length <= 1) ui.pdraft.days = [parseYmd(ui.pdraft.start).getDay()]; } if (ds.p !== 'title') render(true); return; }
   if (ds.w) { ui.wdraft[ds.w] = t.value; return; }
