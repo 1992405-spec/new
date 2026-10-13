@@ -322,11 +322,11 @@ function itemText(it) {
 }
 const summary = s => s.items.map(itemText).join(' · ');
 const setsText = (it, ex) => it.sets.map(x => it.fields.map(k => x[k] ? `${x[k]}${k === 'd' ? ex.unit : ''}` : '').filter(Boolean).join(' × ')).filter(Boolean).join(' · ');
-function wodResult(it) { const r = it.res || {}; if (r.time) return r.time; if (r.rounds) return `${r.rounds}R${r.reps ? ' + ' + r.reps : ''}`; if (r.reps) return `${r.reps}렙`; return r.text || ''; }
+function wodResult(it) { const r = it.res || {}; if (r.status === 'DNF') return `DNF${r.short ? ' -' + String(r.short).replace(/^-/, '') : ''}`; if (r.status === 'DONE') return r.time ? `DONE ${r.time}` : 'DONE'; if (r.time) return r.time; if (r.rounds) return `${r.rounds}R${r.reps ? ' + ' + r.reps : ''}`; if (r.reps) return `${r.reps}렙`; return r.text || ''; }
 function bestWod(id, exceptSessionId) {
   if (!id) return null;
   const res = [];
-  for (const s of state.sessions) if (s.id !== exceptSessionId) for (const it of s.items) if (it.type === 'wod' && it.wodId === id) res.push({s, it});
+  for (const s of state.sessions) if (s.id !== exceptSessionId) for (const it of s.items) if (it.type === 'wod' && it.wodId === id && !it.res?.status) res.push({s, it});
   if (!res.length) return null;
   const w = wodById(id) || res[0].it;
   if (w.format === 'fortime' || w.format === 'igyg') {
@@ -494,6 +494,9 @@ function wodResultBox(it, i) {
   const F = FORMATS[it.format] || FORMATS.custom, b = bestWod(it.wodId, ui.draft.id);
   return `<div class="hero" style="display:flex;flex-direction:column;gap:10px">
       <div class="row between"><span class="eb" style="font-weight:700">결과</span><div class="row" style="gap:4px">${['Rx','Scaled'].map(s => `<button class="pill" style="${it.scale === s ? 'background:#000;color:var(--lime);border-color:#000;font-weight:700' : 'border-color:#000;color:#000'}" data-action="scale" data-i="${i}" data-v="${s}">${s}</button>`).join('')}</div></div>
+      <div class="row" style="gap:6px">${[['', '기록'], ['DNF', 'DNF'], ['DONE', 'DONE']].map(([v, l]) => `<button class="pill" style="${(it.res?.status || '') === v ? 'background:#000;color:var(--lime);border-color:#000;font-weight:700' : 'border-color:#000;color:#000'}" data-action="res-status" data-i="${i}" data-v="${v}">${l}</button>`).join('')}</div>
+      ${it.res?.status === 'DNF' ? `<div class="res"><label>못 채운 렙 (−)<input data-i="${i}" data-res="short" inputmode="numeric" value="${esc(String(it.res?.short ?? '').replace(/^-/, ''))}" placeholder="6"></label></div>` : ''}
+      ${it.res?.status ? `<div class="sub" style="font-weight:500">결과: <b data-respv="${i}">${esc(wodResult(it))}</b>${it.res.status === 'DNF' ? ' · 아래 칸은 적고 싶을 때만' : ''}</div>` : ''}
       <div class="res">${F.res.map(k => `<label>${resLabel(it.format, k)}<input class="${k === 'partner' || k === 'text' ? 'txt' : ''}" data-i="${i}" data-res="${k}" inputmode="${k === 'rounds' || k === 'reps' ? 'numeric' : 'text'}" value="${esc(it.res?.[k] ?? '')}" placeholder="${k === 'time' ? '0:00' : k === 'partner' ? '파트너' : k === 'text' ? '결과' : '0'}"></label>`).join('')}</div>
       ${it.daily ? '' : b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 와드의 첫 기록이에요</div>'}
     </div>`;
@@ -779,6 +782,7 @@ const A = {
   'add-daily': () => { ui.draft.items.push({type:'wod', id:uid(), daily:true, wodId:null, name:'', format:'fortime', scheme:'', moves:[{a:'', n:''}, {a:'', n:''}], scale:'Rx', res:{}}); closeSheet(); render(true); setTimeout(() => { const t = document.querySelectorAll('[data-dw="name"]'); t[t.length - 1]?.scrollIntoView({block:'start'}); }, 30); },
   'dm-add': el => { const it = ui.draft.items[+el.dataset.i]; it.moves = [...(it.moves?.length ? it.moves : [{a:'', n:''}]), {a:'', n:''}]; render(true); const r = document.querySelectorAll(`[data-i="${el.dataset.i}"][data-dm][data-k="n"]`); r[r.length - 1]?.focus(); },
   'dm-del': el => { const it = ui.draft.items[+el.dataset.i]; it.moves.splice(+el.dataset.j, 1); if (!it.moves.length) it.moves.push({a:'', n:''}); render(true); },
+  'res-status': el => { const it = ui.draft.items[+el.dataset.i]; it.res = {...(it.res || {}), status:el.dataset.v}; if (!el.dataset.v) delete it.res.short; render(true); },
   'dw-format': el => { const it = ui.draft.items[+el.dataset.i]; it.format = el.dataset.v; it.res = {}; render(true); },
   'dw-save': el => { const it = ui.draft.items[+el.dataset.i], moves = dailyMoves(it);
     if (!moves.length) { toast('와드 내용을 먼저 적어 주세요'); return; }
@@ -897,7 +901,7 @@ document.addEventListener('input', e => {
   if (ds.f && ds.s !== undefined) { ui.draft.items[+ds.i].sets[+ds.s][ds.f] = t.value; return; }
   if (ds.dm !== undefined) { const it = ui.draft.items[+ds.i]; if (!it.moves?.length) it.moves = [{a:'', n:''}]; it.moves[+ds.dm] = {...it.moves[+ds.dm], [ds.k]:t.value, ...(ds.k === 'n' ? {exId:null} : {})}; return; }
   if (ds.dw) { ui.draft.items[+ds.i][ds.dw] = t.value; return; }
-  if (ds.res) { const it = ui.draft.items[+ds.i]; it.res = {...(it.res || {}), [ds.res]:t.value}; return; }
+  if (ds.res) { const it = ui.draft.items[+ds.i]; it.res = {...(it.res || {}), [ds.res]:t.value}; const pv = document.querySelector(`[data-respv="${ds.i}"]`); if (pv) pv.textContent = wodResult(it); return; }
   if (ds.p) { ui.pdraft[ds.p] = t.value; if (ds.p === 'start') { if (!t.value) ui.pdraft.start = TODAY(); if (ui.pdraft.repeat === 'weekly' && ui.pdraft.days.length <= 1) ui.pdraft.days = [parseYmd(ui.pdraft.start).getDay()]; } if (ds.p !== 'title') render(true); return; }
   if (ds.w) { ui.wdraft[ds.w] = t.value; return; }
   if (ds.wm !== undefined) { ui.wdraft.moves[+ds.wm][ds.k] = t.value; return; }
