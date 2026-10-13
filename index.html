@@ -4,7 +4,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Setlog">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -24,7 +24,7 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html,body{height:100%}
+html,body{height:100%;height:100dvh}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45;margin:0;
   display:flex;justify-content:center;align-items:center;padding-inline:16px;padding-block:16px}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -535,14 +535,17 @@ function viewWod() {
 }
 
 /* library */
-function viewLib() {
+function libList() {
   const q = ui.libQ.trim(), list = state.exercises.filter(e => (ui.libCat === 'all' || e.cat === ui.libCat) && (!q || e.name.includes(q)));
+  return CATS.map(c => ({c, items:list.filter(e => e.cat === c.k)})).filter(g => g.items.length).map(g => `<div><div class="row" style="gap:8px;margin-bottom:6px"><span class="bar" style="background:${g.c.color};height:14px"></span><span class="eb">${g.c.label} · ${g.items.length}</span></div>
+    <div class="card list" style="padding:4px 16px">${g.items.map(e => `<button class="it" data-action="edit-ex" data-id="${e.id}"><span class="grow"><span class="t" style="display:block">${esc(e.name)}</span><span class="meta" style="display:block">${e.fields.map(k => FIELDS[k].label + (k === 'd' ? `(${e.unit})` : '')).join(' · ')}</span></span><span class="sub">편집</span></button>`).join('')}</div></div>`).join('') || '<div class="empty">찾는 운동이 없어요.</div>';
+}
+function viewLib() {
   return `<div class="row between"><span class="eb">운동목록</span><button class="pill solid" data-action="edit-ex">+ 추가</button></div>
   <div class="row" style="align-items:flex-end;gap:10px"><h1 class="disp" style="font-size:64px">운동</h1><span class="n" style="font-size:64px;color:var(--lime)">${state.exercises.length}</span></div>
   <input class="search" id="libQ" type="search" placeholder="운동 이름 검색" value="${esc(ui.libQ)}" aria-label="운동 검색">
   <div class="chips">${[{k:'all', label:'전체'}, ...CATS].map(c => `<button class="chip sm" aria-pressed="${ui.libCat === c.k}" data-action="lib-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
-  ${CATS.map(c => ({c, items:list.filter(e => e.cat === c.k)})).filter(g => g.items.length).map(g => `<div><div class="row" style="gap:8px;margin-bottom:6px"><span class="bar" style="background:${g.c.color};height:14px"></span><span class="eb">${g.c.label} · ${g.items.length}</span></div>
-    <div class="card list" style="padding:4px 16px">${g.items.map(e => `<button class="it" data-action="edit-ex" data-id="${e.id}"><span class="grow"><span class="t" style="display:block">${esc(e.name)}</span><span class="meta" style="display:block">${e.fields.map(k => FIELDS[k].label + (k === 'd' ? `(${e.unit})` : '')).join(' · ')}</span></span><span class="sub">편집</span></button>`).join('')}</div></div>`).join('') || '<div class="empty">찾는 운동이 없어요.</div>'}`;
+  <div id="libList" style="display:flex;flex-direction:column;gap:16px">${libList()}</div>`;
 }
 
 /* stats */
@@ -615,13 +618,16 @@ function sheetPlanDetail(id, ds) {
     ${ds <= TODAY() ? `<button class="btn lime" data-action="record-plan" data-id="${p.id}" data-date="${ds}">이 계획으로 기록하기</button>` : '<div class="sub">계획한 날이 되면 여기서 바로 기록할 수 있어요.</div>'}
     <div class="row" style="gap:8px">${p.repeat !== 'none' ? `<button class="btn out small" data-action="skip-plan" data-id="${p.id}" data-date="${ds}">이번만 건너뛰기</button>` : ''}<button class="btn out small" data-action="edit-plan" data-id="${p.id}">계획 수정</button></div>`);
 }
+function pickList() {
+  const q = ui.pickQ.trim(), list = state.exercises.filter(e => (ui.pickCat === 'all' || e.cat === ui.pickCat) && (!q || e.name.includes(q)));
+  return list.map(e => `<button class="it" data-action="add-ex" data-id="${e.id}"><span class="bar" style="background:${catOf(e.cat).color};height:18px"></span><span class="grow t">${esc(e.name)}</span><span class="pill">추가</span></button>`).join('') || '<div class="empty">찾는 운동이 없어요.</div>';
+}
 function sheetPickEx() {
   ui.sheet = sheetPickEx;
-  const q = ui.pickQ.trim(), list = state.exercises.filter(e => (ui.pickCat === 'all' || e.cat === ui.pickCat) && (!q || e.name.includes(q)));
   openSheet(`<div class="row between"><h2 class="disp" style="font-size:30px">운동 추가</h2><button class="pill lime" data-action="edit-ex" data-from="pick">+ 새 운동</button></div>
     <input class="search" id="pickQ" type="search" placeholder="운동 이름 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
     <div class="chips">${[{k:'all', label:'전체'}, ...CATS].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
-    <div class="card list" style="padding:2px 16px">${list.map(e => `<button class="it" data-action="add-ex" data-id="${e.id}"><span class="bar" style="background:${catOf(e.cat).color};height:18px"></span><span class="grow t">${esc(e.name)}</span><span class="pill">추가</span></button>`).join('') || '<div class="empty">찾는 운동이 없어요.</div>'}</div>`);
+    <div class="card list" id="pickList" style="padding:2px 16px">${pickList()}</div>`);
 }
 function sheetPickWod() {
   ui.sheet = sheetPickWod;
@@ -824,8 +830,8 @@ document.addEventListener('input', e => {
   if (ds.w) { ui.wdraft[ds.w] = t.value; return; }
   if (ds.wm !== undefined) { ui.wdraft.moves[+ds.wm][ds.k] = t.value; return; }
   if (ds.e) { ui.exd[ds.e] = t.value; return; }
-  if (t.id === 'libQ') { ui.libQ = t.value; render(true); const s = $('#libQ'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); return; }
-  if (t.id === 'pickQ') { ui.pickQ = t.value; refreshSheet(); const s = $('#pickQ'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  if (t.id === 'libQ') { ui.libQ = t.value; $('#libList').innerHTML = libList(); return; }
+  if (t.id === 'pickQ') { ui.pickQ = t.value; $('#pickList').innerHTML = pickList(); }
 });
 document.addEventListener('change', e => {
   if (e.target.id !== 'importFile' || !e.target.files[0]) return;
