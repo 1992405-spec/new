@@ -421,7 +421,7 @@ function pageDay() {
   const prev = dates[i - 1], next = dates[i + 1];
   if (!list.length) return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button></div><div class="empty">이날은 기록이 없어요.</div>`;
   return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button><div class="row" style="gap:4px"><button class="icon" data-action="day-nav" data-v="${prev || ''}" ${prev ? '' : 'disabled style="opacity:.25"'} aria-label="이전 기록">‹</button><span class="eb">${md(ds)} ${WD[parseYmd(ds).getDay()]}</span><button class="icon" data-action="day-nav" data-v="${next || ''}" ${next ? '' : 'disabled style="opacity:.25"'} aria-label="다음 기록">›</button></div><span style="width:70px"></span></div>
-  <div id="daySwipe" style="display:flex;flex-direction:column;gap:16px">${list.map(s => {
+  <div id="daySwipe" style="touch-action:pan-y;display:flex;flex-direction:column;gap:16px">${list.map(s => {
     const plan = state.plans.find(p => p.id === s.planId);
     let hero = null;
     for (const it of s.items) { if (it.type === 'ex') { const b = bestSet(it); if (b && (!hero || b.v > hero.v)) hero = {...b, name:exById(it.exId)?.name, exId:it.exId}; } }
@@ -799,6 +799,7 @@ document.addEventListener('pointermove', e => { if (press && (Math.abs(e.clientX
 document.addEventListener('pointerup', e => {
   if (!press) return; clearTimeout(press.timer);
   const dx = e.clientX - press.x, dy = e.clientY - press.y, horiz = Math.abs(dx) > Math.abs(dy) * 1.5;
+  if (press.x - $('#app').getBoundingClientRect().left < EDGE) { press = null; return; }
   if (press.cal && !press.long && Math.abs(dx) > 50 && horiz && ui.view !== 'list') { swallowClick = true; shiftMonth(dx < 0 ? 1 : -1); }
   else if (ui.page === 'day' && !press.long && Math.abs(dx) > 70 && horiz && e.target.closest('#daySwipe')) {
     const dates = [...new Set(sorted().map(s => s.date))], i = dates.indexOf(ui.dayDate), to = dates[i + (dx < 0 ? 1 : -1)];
@@ -842,6 +843,35 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('change', e => { const k = e.target.dataset.catf; if (k) { ui.hidden = e.target.checked ? ui.hidden.filter(x => x !== k) : [...new Set([...ui.hidden, k])]; render(true); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheetWrap').hidden) closeSheet(); });
+
+/* ---------- edge swipe back: drag from the left edge to the right, like iPhone Safari ---------- */
+const EDGE = 28;
+function goBack() {
+  if (!$('#sheetWrap').hidden) { closeSheet(); return; }
+  if (ui.page === 'edit') { const was = ui.confirm; A['cancel-edit'](); if (ui.page === 'edit' && ui.confirm === 'cancel' && was !== 'cancel') toast('한 번 더 밀면 작성 중인 내용을 버려요'); return; }
+  if (ui.page) A['close-page']();
+}
+let edge = null;
+document.addEventListener('touchstart', e => {
+  const t = e.touches[0], left = $('#app').getBoundingClientRect().left;
+  edge = (e.touches.length === 1 && t.clientX - left < EDGE && (ui.page || !$('#sheetWrap').hidden)) ? {x:t.clientX, y:t.clientY, t:Date.now(), on:false, el:!$('#sheetWrap').hidden ? $('#sheet') : $('#screen')} : null;
+}, {passive:true});
+document.addEventListener('touchmove', e => {
+  if (!edge) return;
+  const t = e.touches[0], dx = t.clientX - edge.x, dy = t.clientY - edge.y;
+  if (!edge.on) { if (Math.abs(dy) > 10 && Math.abs(dy) > dx) { edge = null; return; } if (dx < 8) return; edge.on = true; edge.el.style.transition = 'none'; edge.el.style.boxShadow = '-12px 0 24px rgba(0,0,0,.6)'; document.activeElement?.blur?.(); }
+  e.preventDefault();
+  edge.dx = Math.max(0, dx); edge.el.style.transform = `translateX(${edge.dx}px)`;
+}, {passive:false});
+function endEdge() {
+  if (!edge) return; const g = edge; edge = null; if (!g.on) return;
+  swallowClick = true; setTimeout(() => swallowClick = false, 350);
+  const w = $('#app').clientWidth, go = g.dx > w * 0.33 || (g.dx > 40 && g.dx / (Date.now() - g.t) > 0.5);
+  g.el.style.transition = 'transform .18s ease-out'; g.el.style.transform = `translateX(${go ? w : 0}px)`;
+  setTimeout(() => { g.el.style.transition = g.el.style.transform = g.el.style.boxShadow = ''; if (go) goBack(); }, 190);
+}
+document.addEventListener('touchend', endEdge);
+document.addEventListener('touchcancel', endEdge);
 
 render();
 </script>
