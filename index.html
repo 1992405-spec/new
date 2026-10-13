@@ -212,7 +212,7 @@ function seedExercises() {
   return [
     ['sq','백스쿼트','weight',W],['bp','벤치프레스','weight',W],['dl','데드리프트','weight',W],['ohp','오버헤드프레스','weight',W],
     ['row','바벨로우','weight',W],['thr','스러스터','weight',W],['cj','클린앤저크','weight',W],['sn','스내치','weight',W],['kbs','케틀벨 스윙','weight',W],
-    ['pu','풀업','body',B],['push','푸시업','body',B],['air','에어스쿼트','body',B],['situp','싯업','body',B],['burpee','버피','body',B],['du','더블언더','body',B],['plank','플랭크','body',['t']],
+    ['pu','풀업','body',B],['push','푸시업','body',B],['air','에어스쿼트','body',B],['situp','싯업','body',B],['burpee','버피','body',B],['du','더블언더','body',B],['hspu','핸드스탠드 푸시업','body',B],['t2b','토투바','body',B],['mu','머슬업','body',B],['box','박스점프','body',B],['wb','월볼','weight',W],['plank','플랭크','body',['t']],
     ['run','러닝','cardio',C,'km'],['rowerg','로잉머신','cardio',C,'m'],['bike','사이클','cardio',C,'km'],['ski','스키에르그','cardio',C,'m'],
     ['free','자유형','swim',C,'m'],['breast','평영','swim',C,'m']
   ].map(([id,name,cat,fields,unit]) => ({id, name, cat, fields:[...fields], unit:unit || 'km'}));
@@ -434,7 +434,7 @@ function pageDay() {
       heroHtml = `<button class="hero" data-action="stat-ex-go" data-v="${hero.exId}" style="border:0;text-align:left;width:100%"><div class="row between"><span class="eb" style="font-weight:700">${esc(hero.name)} · 예상 1RM</span>${pr ? '<span class="pill" style="border-color:#000;color:#000;font-weight:700">PR</span>' : ''}</div>
         <div class="row" style="align-items:flex-end;margin-top:4px"><span class="n" style="font-size:92px">${Math.round(hero.v*10)/10}</span><span class="unit" style="color:var(--lime-sub);font-size:20px">KG</span></div>
         <div class="row between sub"><span>최고 세트 ${hero.w}kg × ${hero.r}</span><span>${prevBest ? `이전 최고 ${Math.round(prevBest*10)/10}kg` : '첫 기록'}</span></div></button>`; }
-    const wodHero = s.items.filter(i => i.type === 'wod').map(it => { const b = bestWod(it.wodId, s.id); return `<div class="hero"><div class="row between"><span class="eb" style="font-weight:700">${esc(it.name)} · ${FORMATS[it.format]?.label || ''}</span><span class="pill" style="background:#000;color:var(--lime);border-color:#000;font-weight:700">${esc(it.scale || 'Rx')}</span></div>
+    const wodHero = s.items.filter(i => i.type === 'wod').map(it => { const b = bestWod(it.wodId, s.id); return `<div class="hero"><div class="row between"><span class="eb" style="font-weight:700">${esc([it.name, FORMATS[it.format]?.label, it.scheme].filter(Boolean).join(' · '))}</span><span class="pill" style="background:#000;color:var(--lime);border-color:#000;font-weight:700">${esc(it.scale || 'Rx')}</span></div>
       <div class="n" style="font-size:100px;margin-top:2px">${esc(wodResult(it) || '-')}</div><div class="sub">${it.daily ? '' : b ? `이전 최고 ${esc(b.txt)}` : '첫 기록'}${it.res?.partner ? ` · 파트너 ${esc(it.res.partner)}` : ''}</div>
       ${it.moves?.length ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.moves.map(m => esc([m.a, m.n].filter(Boolean).join(' '))).join('<br>')}</div>` : ''}</div>`; }).join('');
     return `<div><div class="eb">${s.mood ? `${s.mood} ${MOODS.find(m => m[0] === s.mood)?.[1] || ''}` : ''}</div><h1 class="disp" style="font-size:52px;margin-top:4px">${esc(s.title || '운동')}</h1>
@@ -465,6 +465,7 @@ function pageEdit() {
     <label class="pill row" style="gap:2px;margin-bottom:10px">약 <input id="dDur" data-d="duration" inputmode="numeric" value="${esc(d.duration)}" placeholder="60" style="width:30px;background:none;border:0;text-align:right;padding:0;color:var(--ink)">분</label>
   </div>
   ${plan ? `<div class="row wrap" style="gap:8px"><span class="pill lime">${esc(repeatText(plan))} · ${esc(plan.title)} 불러옴</span><span class="sub" style="font-size:12px">지난 무게를 미리 채웠어요</span></div>` : ''}
+  <datalist id="exNames">${state.exercises.map(e => `<option value="${esc(e.name)}">`).join('')}</datalist>
   <input class="inp big" id="dTitle" data-d="title" value="${esc(d.title)}" placeholder="운동 이름 (예: 하체 데이)" aria-label="운동 이름">
   <div><div class="eb" style="margin-bottom:8px">오늘 컨디션</div><div class="chips">${MOODS.map(([e, l]) => `<button class="chip" aria-pressed="${d.mood === e}" data-action="mood" data-v="${e}">${e} ${l}</button>`).join('')}</div></div>
   ${d.items.map((it, i) => it.type === 'wod' ? wodEditCard(it, i) : exEditCard(it, i)).join('') || '<div class="card empty">아래에서 운동이나 와드를 추가해 주세요.</div>'}
@@ -485,7 +486,9 @@ function exEditCard(it, i) {
     <div class="row" style="gap:8px"><button class="add" data-action="add-set" data-i="${i}">+ 세트 추가</button>${it.sets.length > 1 ? `<button class="add" style="width:auto;padding:9px 14px" data-action="del-set" data-i="${i}">− 마지막 세트</button>` : ''}</div>
   </div>`;
 }
-const dailyMoves = it => (it.text || '').split('\n').map(x => x.trim()).filter(Boolean).map(n => ({a:'', n}));
+const dailyMoves = it => (it.moves || []).map(m => ({...m, a:(m.a || '').trim(), n:(m.n || '').trim()})).filter(m => m.n);
+const norm = x => String(x || '').toLowerCase().replace(/\s+/g, '');
+const findEx = name => state.exercises.find(e => norm(e.name) === norm(name));
 function wodResultBox(it, i) {
   const F = FORMATS[it.format] || FORMATS.custom, b = bestWod(it.wodId, ui.draft.id);
   return `<div class="hero" style="display:flex;flex-direction:column;gap:10px">
@@ -495,11 +498,15 @@ function wodResultBox(it, i) {
     </div>`;
 }
 function dailyWodCard(it, i) {
+  const moves = it.moves?.length ? it.moves : [{a:'', n:''}];
   return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="row between"><span class="pill lime">오늘의 와드</span><button class="icon" data-action="remove-item" data-i="${i}" aria-label="오늘의 와드 빼기">✕</button></div>
     <input class="inp big" data-dw="name" data-i="${i}" value="${esc(it.name)}" placeholder="와드 이름 (선택)" aria-label="와드 이름" style="font-family:var(--num);font-weight:800;font-size:28px">
     <div class="chips">${Object.entries(FORMATS).map(([k, f]) => `<button class="chip sm" aria-pressed="${it.format === k}" data-action="dw-format" data-i="${i}" data-v="${k}">${f.label}</button>`).join('')}</div>
-    <textarea class="inp" data-dw="text" data-i="${i}" rows="5" placeholder="화이트보드에 적힌 그대로 적어 주세요&#10;예) 21-15-9&#10;스러스터 43kg&#10;풀업" aria-label="와드 내용" style="line-height:1.6">${esc(it.text || '')}</textarea>
+    <input class="inp" data-dw="scheme" data-i="${i}" value="${esc(it.scheme || '')}" placeholder="구성 (예: 21-15-9, 12분, 5라운드)" aria-label="와드 구성">
+    <div class="field"><span class="eb">동작 (운동목록에서 이름으로 찾을 수 있어요)</span>
+      ${moves.map((m, j) => `<div class="move-row" style="grid-template-columns:100px 1fr 30px"><input class="inp" data-dm="${j}" data-i="${i}" data-k="a" value="${esc(m.a)}" placeholder="21-15-9" aria-label="${j+1}번 횟수·무게"><input class="inp" list="exNames" data-dm="${j}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동 (예: 핸드스탠드 푸시업)" aria-label="${j+1}번 운동"><button class="icon" data-action="dm-del" data-i="${i}" data-j="${j}" aria-label="${j+1}번 동작 삭제">✕</button></div>`).join('')}
+      <button class="add" data-action="dm-add" data-i="${i}">+ 동작 추가</button></div>
     ${wodResultBox(it, i)}
     ${it.savedId ? '<div class="sub">내 와드에도 저장했어요</div>' : `<button class="add" data-action="dw-save" data-i="${i}">이 와드를 내 와드에도 저장 (선택)</button>`}
   </div>`;
@@ -556,16 +563,41 @@ function viewWod() {
   ${body}`;
 }
 
+/* exercise history */
+function hits(id, name) {
+  const out = [], q = norm(name);
+  for (const s of [...state.sessions].sort((a, b) => b.date.localeCompare(a.date))) for (const it of s.items) {
+    if (it.type === 'ex') { const ex = exById(it.exId);
+      if ((id && it.exId === id) || (!id && q && ex && norm(ex.name).includes(q))) out.push({s, kind:'ex', head:ex?.name || '', detail:setsText(it, ex || {unit:'km'}) + (it.fields.includes('w') ? ' kg' : '')}); }
+    else { const ms = (it.moves || []).filter(m => id ? (m.exId === id || (!m.exId && q && norm(m.n).includes(q))) : (q && norm(m.n).includes(q)));
+      if (ms.length) out.push({s, kind:'wod', head:`${it.name}${wodResult(it) ? ' · ' + wodResult(it) : ''}`, detail:ms.map(m => [m.a, m.n].filter(Boolean).join(' ')).join(', ')}); }
+  }
+  return out;
+}
+const hitRow = h => `<button class="it" data-action="open-day" data-date="${h.s.date}"><span class="bar" style="background:${h.kind === 'wod' ? 'var(--orange)' : catOf(sessionCat(h.s)).color};height:30px"></span><span class="grow"><span class="t" style="display:block">${esc(h.head)}</span><span class="meta" style="display:block">${esc(h.detail)}</span></span><span class="n" style="font-size:20px;color:var(--mut)">${md(h.s.date)}</span></button>`;
+function sheetExHistory(id) {
+  ui.sheet = () => sheetExHistory(id);
+  const ex = exById(id); if (!ex) return closeSheet();
+  const hs = hits(id, ex.name), pts = series(id), best = pts.length ? Math.max(...pts.map(p => p.v)) : 0;
+  openSheet(`<div class="row between" style="align-items:flex-end"><h2 class="disp" style="font-size:36px">${esc(ex.name)}</h2><button class="pill" data-action="edit-ex" data-id="${id}">편집</button></div>
+    <div class="row wrap" style="gap:6px"><span class="pill lime">기록 ${hs.length}번</span><span class="pill">${catOf(ex.cat).label}</span>${hs[0] ? `<span class="pill">마지막 ${md(hs[0].s.date)}</span>` : ''}${best ? `<span class="pill">예상 1RM 최고 ${best}kg</span>` : ''}</div>
+    ${hs.length ? `<div class="card list" style="padding:2px 16px">${hs.map(hitRow).join('')}</div>` : '<div class="empty">아직 이 운동을 기록한 날이 없어요.</div>'}`);
+}
+
 /* library */
 function libList() {
   const q = ui.libQ.trim(), list = state.exercises.filter(e => (ui.libCat === 'all' || e.cat === ui.libCat) && (!q || e.name.includes(q)));
   return CATS.map(c => ({c, items:list.filter(e => e.cat === c.k)})).filter(g => g.items.length).map(g => `<div><div class="row" style="gap:8px;margin-bottom:6px"><span class="bar" style="background:${g.c.color};height:14px"></span><span class="eb">${g.c.label} · ${g.items.length}</span></div>
-    <div class="card list" style="padding:4px 16px">${g.items.map(e => `<button class="it" data-action="edit-ex" data-id="${e.id}"><span class="grow"><span class="t" style="display:block">${esc(e.name)}</span><span class="meta" style="display:block">${e.fields.map(k => FIELDS[k].label + (k === 'd' ? `(${e.unit})` : '')).join(' · ')}</span></span><span class="sub">편집</span></button>`).join('')}</div></div>`).join('') || '<div class="empty">찾는 운동이 없어요.</div>';
+    <div class="card list" style="padding:4px 16px">${g.items.map(e => `<button class="it" data-action="ex-history" data-id="${e.id}"><span class="grow"><span class="t" style="display:block">${esc(e.name)}</span><span class="meta" style="display:block">${e.fields.map(k => FIELDS[k].label + (k === 'd' ? `(${e.unit})` : '')).join(' · ')}</span></span><span class="sub">기록 ${hits(e.id, e.name).length}</span></button>`).join('')}</div></div>`).join('') + (q ? recordSearch(q) : '') || '<div class="empty">찾는 운동이 없어요.</div>';
+}
+function recordSearch(q) {
+  const hs = hits(null, q);
+  return hs.length ? `<div><div class="row" style="gap:8px;margin-bottom:6px"><span class="bar" style="background:var(--orange);height:14px"></span><span class="eb">기록에서 찾음 · ${hs.length}</span></div><div class="card list" style="padding:4px 16px">${hs.slice(0, 40).map(hitRow).join('')}</div></div>` : '';
 }
 function viewLib() {
   return `<div class="row between"><span class="eb">운동목록</span><button class="pill solid" data-action="edit-ex">+ 추가</button></div>
   <div class="row" style="align-items:flex-end;gap:10px"><h1 class="disp" style="font-size:64px">운동</h1><span class="n" style="font-size:64px;color:var(--lime)">${state.exercises.length}</span></div>
-  <input class="search" id="libQ" type="search" placeholder="운동 이름 검색" value="${esc(ui.libQ)}" aria-label="운동 검색">
+  <input class="search" id="libQ" type="search" placeholder="운동 이름으로 기록 찾기" value="${esc(ui.libQ)}" aria-label="운동 검색">
   <div class="chips">${[{k:'all', label:'전체'}, ...CATS].map(c => `<button class="chip sm" aria-pressed="${ui.libCat === c.k}" data-action="lib-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
   <div id="libList" style="display:flex;flex-direction:column;gap:16px">${libList()}</div>`;
 }
@@ -726,20 +758,25 @@ const A = {
   'cancel-edit': () => { const dirty = ui.draft.items.length || ui.draft.memo || ui.draft.title; if (dirty && !ui.draft.id && ui.confirm !== 'cancel') { ui.confirm = 'cancel'; return render(true); } ui.page = ui.draft.id ? 'day' : null; ui.confirm = null; render(); },
   'save-edit': () => {
     const d = ui.draft;
-    d.items = d.items.filter(it => !it.daily || dailyMoves(it).length || wodResult(it)).map(it => it.daily ? {...it, name:it.name.trim() || '오늘의 와드', moves:dailyMoves(it)} : it);
+    let added = 0;
+    d.items = d.items.filter(it => !it.daily || dailyMoves(it).length || wodResult(it)).map(it => it.daily ? {...it, name:it.name.trim() || '오늘의 와드', moves:dailyMoves(it).map(m => {
+      let ex = findEx(m.n); if (!ex) { ex = {id:uid(), name:m.n, cat:'body', fields:['r'], unit:'km'}; state.exercises.push(ex); added++; }
+      return {...m, n:ex.name, exId:ex.id}; })} : it);
     d.items = d.items.map(it => it.type === 'ex' ? {...it, sets:it.sets.filter(s => it.fields.some(k => s[k] !== undefined && s[k] !== ''))} : it).filter(it => it.type === 'wod' || it.sets.length);
     if (!d.items.length) { toast('운동을 하나 이상 기록해 주세요'); return render(true); }
     if (!d.title) d.title = d.items.map(it => it.type === 'wod' ? it.name : exById(it.exId)?.name).slice(0, 2).join(' + ');
     d.items.forEach(it => delete it.prefilled);
     if (d.id) { const i = state.sessions.findIndex(s => s.id === d.id); state.sessions[i] = d; } else { d.id = uid(); state.sessions.push(d); }
-    save(); ui.sel = d.date; ui.month = d.date.slice(0, 7); openDay(d.date); toast('기록을 저장했어요');
+    save(); ui.sel = d.date; ui.month = d.date.slice(0, 7); openDay(d.date); toast(added ? `기록을 저장했어요 · 새 운동 ${added}개를 운동목록에 넣었어요` : '기록을 저장했어요');
   },
   mood: el => { ui.draft.mood = ui.draft.mood === el.dataset.v ? '' : el.dataset.v; render(true); },
   'pick-ex': () => { ui.pickQ = ''; sheetPickEx(); },
   'pick-cat': el => { ui.pickCat = el.dataset.v; refreshSheet(); },
   'add-ex': el => { const it = exItem(el.dataset.id, ui.draft.date); ui.draft.items.push(it); closeSheet(); render(true); toast(it.prefilled ? '지난 기록을 채웠어요' : '운동을 추가했어요'); setTimeout(() => $('#screen').scrollTo({top:$('#screen').scrollHeight, behavior:'smooth'}), 30); },
   'record-daily': () => { const d = newDraft(recordDate()); openEditor(d); A['add-daily'](); },
-  'add-daily': () => { ui.draft.items.push({type:'wod', id:uid(), daily:true, wodId:null, name:'', format:'fortime', text:'', moves:[], scale:'Rx', res:{}}); closeSheet(); render(true); setTimeout(() => { const t = document.querySelectorAll('[data-dw="text"]'); t[t.length - 1]?.scrollIntoView({block:'center'}); }, 30); },
+  'add-daily': () => { ui.draft.items.push({type:'wod', id:uid(), daily:true, wodId:null, name:'', format:'fortime', scheme:'', moves:[{a:'', n:''}, {a:'', n:''}], scale:'Rx', res:{}}); closeSheet(); render(true); setTimeout(() => { const t = document.querySelectorAll('[data-dw="name"]'); t[t.length - 1]?.scrollIntoView({block:'start'}); }, 30); },
+  'dm-add': el => { const it = ui.draft.items[+el.dataset.i]; it.moves = [...(it.moves?.length ? it.moves : [{a:'', n:''}]), {a:'', n:''}]; render(true); const r = document.querySelectorAll(`[data-i="${el.dataset.i}"][data-dm][data-k="n"]`); r[r.length - 1]?.focus(); },
+  'dm-del': el => { const it = ui.draft.items[+el.dataset.i]; it.moves.splice(+el.dataset.j, 1); if (!it.moves.length) it.moves.push({a:'', n:''}); render(true); },
   'dw-format': el => { const it = ui.draft.items[+el.dataset.i]; it.format = el.dataset.v; it.res = {}; render(true); },
   'dw-save': el => { const it = ui.draft.items[+el.dataset.i], moves = dailyMoves(it);
     if (!moves.length) { toast('와드 내용을 먼저 적어 주세요'); return; }
@@ -790,6 +827,7 @@ const A = {
   // library
   'lib-cat': el => { ui.libCat = el.dataset.v; render(true); },
   'edit-ex': el => { const src = el.dataset.id ? exById(el.dataset.id) : null; ui.exd = src ? JSON.parse(JSON.stringify(src)) : {name:el.dataset.from === 'pick' ? ui.pickQ : '', cat:'weight', fields:['w','r'], unit:'km'}; ui.exFrom = el.dataset.from || null; ui.confirm = null; sheetExEditor(); },
+  'ex-history': el => sheetExHistory(el.dataset.id),
   'e-cat': el => { ui.exd.cat = el.dataset.v; refreshSheet(); },
   'e-field': el => { const f = el.dataset.v, d = ui.exd; d.fields = d.fields.includes(f) ? d.fields.filter(x => x !== f) : ['w','r','t','d'].filter(x => x === f || d.fields.includes(x)); refreshSheet(); },
   'e-unit': el => { ui.exd.unit = el.dataset.v; refreshSheet(); },
@@ -855,6 +893,7 @@ document.addEventListener('input', e => {
   const t = e.target, ds = t.dataset;
   if (ds.d) { ui.draft[ds.d] = t.value; if (ds.d === 'date') { if (!t.value) ui.draft.date = TODAY(); else if (t.value > TODAY()) { ui.draft.date = TODAY(); toast('기록은 오늘까지 쓸 수 있어요'); } render(true); } return; }
   if (ds.f && ds.s !== undefined) { ui.draft.items[+ds.i].sets[+ds.s][ds.f] = t.value; return; }
+  if (ds.dm !== undefined) { const it = ui.draft.items[+ds.i]; if (!it.moves?.length) it.moves = [{a:'', n:''}]; it.moves[+ds.dm] = {...it.moves[+ds.dm], [ds.k]:t.value, ...(ds.k === 'n' ? {exId:null} : {})}; return; }
   if (ds.dw) { ui.draft.items[+ds.i][ds.dw] = t.value; return; }
   if (ds.res) { const it = ui.draft.items[+ds.i]; it.res = {...(it.res || {}), [ds.res]:t.value}; return; }
   if (ds.p) { ui.pdraft[ds.p] = t.value; if (ds.p === 'start') { if (!t.value) ui.pdraft.start = TODAY(); if (ui.pdraft.repeat === 'weekly' && ui.pdraft.days.length <= 1) ui.pdraft.days = [parseYmd(ui.pdraft.start).getDay()]; } if (ds.p !== 'title') render(true); return; }
