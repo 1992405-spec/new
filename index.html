@@ -369,6 +369,7 @@ function render(keep) {
   $('#tabs').hidden = !!ui.page;
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-current', !ui.page && b.dataset.tab === ui.tab ? 'page' : 'false'));
   scr.innerHTML = ui.page === 'day' ? pageDay() : ui.page === 'edit' ? pageEdit() : ui.page === 'plan' ? pagePlan() : ({cal:viewCal, wod:viewWod, lib:viewLib, stats:viewStats})[ui.tab]();
+  noAutofill(scr);
   scr.scrollTop = keep ? top : 0;
 }
 
@@ -466,7 +467,7 @@ function pageEdit() {
   </div>
   ${plan ? `<div class="row wrap" style="gap:8px"><span class="pill lime">${esc(repeatText(plan))} · ${esc(plan.title)} 불러옴</span><span class="sub" style="font-size:12px">지난 무게를 미리 채웠어요</span></div>` : ''}
   <datalist id="exNames">${state.exercises.map(e => `<option value="${esc(e.name)}">`).join('')}</datalist>
-  <input class="inp big" id="dTitle" data-d="title" value="${esc(d.title)}" placeholder="운동 이름 (예: 하체 데이)" aria-label="운동 이름">
+  <input class="inp big" id="dTitle" data-d="title" value="${esc(d.title)}" placeholder="오늘 운동 제목 (예: 하체 데이)" aria-label="운동 제목">
   <div><div class="eb" style="margin-bottom:8px">오늘 컨디션</div><div class="chips">${MOODS.map(([e, l]) => `<button class="chip" aria-pressed="${d.mood === e}" data-action="mood" data-v="${e}">${e} ${l}</button>`).join('')}</div></div>
   ${d.items.map((it, i) => it.type === 'wod' ? wodEditCard(it, i) : exEditCard(it, i)).join('') || '<div class="card empty">아래에서 운동이나 와드를 추가해 주세요.</div>'}
   <button class="btn out small" data-action="pick-ex">+ 운동 · 와드 추가</button>
@@ -493,7 +494,7 @@ function wodResultBox(it, i) {
   const F = FORMATS[it.format] || FORMATS.custom, b = bestWod(it.wodId, ui.draft.id);
   return `<div class="hero" style="display:flex;flex-direction:column;gap:10px">
       <div class="row between"><span class="eb" style="font-weight:700">결과</span><div class="row" style="gap:4px">${['Rx','Scaled'].map(s => `<button class="pill" style="${it.scale === s ? 'background:#000;color:var(--lime);border-color:#000;font-weight:700' : 'border-color:#000;color:#000'}" data-action="scale" data-i="${i}" data-v="${s}">${s}</button>`).join('')}</div></div>
-      <div class="res">${F.res.map(k => `<label>${resLabel(it.format, k)}<input class="${k === 'partner' || k === 'text' ? 'txt' : ''}" data-i="${i}" data-res="${k}" inputmode="${k === 'rounds' || k === 'reps' ? 'numeric' : 'text'}" value="${esc(it.res?.[k] ?? '')}" placeholder="${k === 'time' ? '0:00' : k === 'partner' ? '이름' : k === 'text' ? '결과' : '0'}"></label>`).join('')}</div>
+      <div class="res">${F.res.map(k => `<label>${resLabel(it.format, k)}<input class="${k === 'partner' || k === 'text' ? 'txt' : ''}" data-i="${i}" data-res="${k}" inputmode="${k === 'rounds' || k === 'reps' ? 'numeric' : 'text'}" value="${esc(it.res?.[k] ?? '')}" placeholder="${k === 'time' ? '0:00' : k === 'partner' ? '파트너' : k === 'text' ? '결과' : '0'}"></label>`).join('')}</div>
       ${it.daily ? '' : b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 와드의 첫 기록이에요</div>'}
     </div>`;
 }
@@ -501,7 +502,7 @@ function dailyWodCard(it, i) {
   const moves = it.moves?.length ? it.moves : [{a:'', n:''}];
   return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="row between"><span class="pill lime">오늘의 와드</span><button class="icon" data-action="remove-item" data-i="${i}" aria-label="오늘의 와드 빼기">✕</button></div>
-    <input class="inp big" data-dw="name" data-i="${i}" value="${esc(it.name)}" placeholder="와드 이름 (선택)" aria-label="와드 이름" style="font-family:var(--num);font-weight:800;font-size:28px">
+    <input class="inp big" data-dw="name" data-i="${i}" value="${esc(it.name)}" placeholder="와드 제목 (선택)" aria-label="와드 제목" style="font-family:var(--num);font-weight:800;font-size:28px">
     <div class="chips">${Object.entries(FORMATS).map(([k, f]) => `<button class="chip sm" aria-pressed="${it.format === k}" data-action="dw-format" data-i="${i}" data-v="${k}">${f.label}</button>`).join('')}</div>
     <input class="inp" data-dw="scheme" data-i="${i}" value="${esc(it.scheme || '')}" placeholder="구성 (예: 21-15-9, 12분, 5라운드)" aria-label="와드 구성">
     <div class="field"><span class="eb">동작 (운동목록에서 이름으로 찾을 수 있어요)</span>
@@ -530,7 +531,7 @@ function pagePlan() {
     occ.push(has ? (past ? 'l' : 'p') : ''); }
   const exs = state.exercises.filter(e => e.cat === d.cat || d.exIds.includes(e.id));
   return `<div class="row between"><button class="pill" data-action="close-page">취소</button><span class="eb">${d.id ? '반복 계획 수정' : '반복 계획 만들기'}</span><button class="pill solid" data-action="save-plan">저장</button></div>
-  <input class="inp big" id="pTitle" data-p="title" value="${esc(d.title)}" placeholder="계획 이름 (예: 하체 + 가슴)" style="font-size:40px" aria-label="계획 이름">
+  <input class="inp big" id="pTitle" data-p="title" value="${esc(d.title)}" placeholder="계획 제목 (예: 하체 + 가슴)" style="font-size:40px" aria-label="계획 제목">
   <div class="row" style="gap:10px;align-items:baseline"><span class="n" style="font-size:44px;color:var(--lime)">${esc(repeatText(d))}</span><span class="sub">${d.notify ? '전날 밤 알림' : '알림 없음'}</span></div>
   <div><div class="sq">${occ.map(c => `<i class="${c}"></i>`).join('')}</div><div class="row between sub" style="font-size:11.5px;margin-top:6px"><span>${md(d.start)} 시작</span><span>라임 = 지난 주 · 점선 = 예정</span><span>${d.end ? md(d.end) + ' 종료' : '종료 없음'}</span></div></div>
   <div class="card" style="display:flex;flex-direction:column;gap:14px">
@@ -597,7 +598,7 @@ function recordSearch(q) {
 function viewLib() {
   return `<div class="row between"><span class="eb">운동목록</span><button class="pill solid" data-action="edit-ex">+ 추가</button></div>
   <div class="row" style="align-items:flex-end;gap:10px"><h1 class="disp" style="font-size:64px">운동</h1><span class="n" style="font-size:64px;color:var(--lime)">${state.exercises.length}</span></div>
-  <input class="search" id="libQ" type="search" placeholder="운동 이름으로 기록 찾기" value="${esc(ui.libQ)}" aria-label="운동 검색">
+  <input class="search" id="libQ" type="search" placeholder="운동으로 기록 찾기" value="${esc(ui.libQ)}" aria-label="운동 검색">
   <div class="chips">${[{k:'all', label:'전체'}, ...CATS].map(c => `<button class="chip sm" aria-pressed="${ui.libCat === c.k}" data-action="lib-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
   <div id="libList" style="display:flex;flex-direction:column;gap:16px">${libList()}</div>`;
 }
@@ -644,7 +645,8 @@ function chartSvg(pts) {
 }
 
 /* ---------- sheets ---------- */
-function openSheet(html) { $('#sheet').innerHTML = '<div class="grab"></div>' + html; $('#sheetWrap').hidden = false; }
+function noAutofill(root) { root.querySelectorAll('input:not([type=checkbox]):not([type=file]):not([type=date]),textarea').forEach(el => { el.setAttribute('autocomplete', 'off'); el.setAttribute('autocapitalize', 'off'); el.setAttribute('data-lpignore', 'true'); el.setAttribute('data-form-type', 'other'); }); }
+function openSheet(html) { $('#sheet').innerHTML = '<div class="grab"></div>' + html; noAutofill($('#sheet')); $('#sheetWrap').hidden = false; }
 function closeSheet() { $('#sheetWrap').hidden = true; ui.sheet = null; }
 function refreshSheet() { if (ui.sheet) { const sh = $('#sheet'), top = sh.scrollTop; ui.sheet(); sh.scrollTop = top; } }
 
@@ -684,7 +686,7 @@ function sheetPickEx() {
   ui.sheet = sheetPickEx;
   openSheet(`<div class="row between"><h2 class="disp" style="font-size:30px">운동 · 와드 추가</h2><button class="pill lime" data-action="edit-ex" data-from="pick">+ 새 운동</button></div>
     <button class="hero" data-action="add-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:24px;display:block">오늘의 와드 바로 적기</span><span class="sub" style="display:block;margin-top:4px">저장 없이 그날 와드 내용과 결과만 적어요</span></button>
-    <input class="search" id="pickQ" type="search" placeholder="운동이나 와드 이름 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
+    <input class="search" id="pickQ" type="search" placeholder="운동이나 와드 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
     <div class="chips">${[{k:'all', label:'전체'}, ...CATS.slice(0, 4), {k:'wod', label:'와드'}, CATS[4]].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
     <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`);
 }
@@ -703,7 +705,7 @@ function sheetWodEditor() {
   ui.sheet = sheetWodEditor;
   const d = ui.wdraft;
   openSheet(`<h2 class="disp" style="font-size:30px">${d.id ? '와드 수정' : '내 와드 만들기'}</h2>
-    <input class="inp" id="wName" data-w="name" value="${esc(d.name)}" placeholder="와드 이름" aria-label="와드 이름">
+    <input class="inp" id="wTitle" data-w="name" value="${esc(d.name)}" placeholder="와드 제목" aria-label="와드 제목">
     <div class="chips">${Object.entries(FORMATS).map(([k, f]) => `<button class="chip sm" aria-pressed="${d.format === k}" data-action="w-format" data-v="${k}">${f.label}</button>`).join('')}</div>
     <div class="sub">${FORMATS[d.format].desc}</div>
     <div class="row" style="gap:8px"><label class="field grow"><span class="eb">시간 / 타임캡 (분)</span><input class="inp" id="wCap" data-w="cap" inputmode="numeric" value="${esc(d.cap)}"></label><label class="field grow"><span class="eb">라운드</span><input class="inp" id="wRounds" data-w="rounds" inputmode="numeric" value="${esc(d.rounds)}"></label></div>
@@ -717,7 +719,7 @@ function sheetExEditor() {
   ui.sheet = sheetExEditor;
   const d = ui.exd;
   openSheet(`<h2 class="disp" style="font-size:30px">${d.id ? '운동 편집' : '새 운동'}</h2>
-    <input class="inp" id="eName" data-e="name" value="${esc(d.name)}" placeholder="예: 불가리안 스플릿 스쿼트" aria-label="운동 이름">
+    <input class="inp" id="eTitle" data-e="name" value="${esc(d.name)}" placeholder="예: 불가리안 스플릿 스쿼트" aria-label="운동">
     <div><div class="eb" style="margin-bottom:8px">종류</div><div class="chips">${CATS.map(c => `<button class="chip sm" aria-pressed="${d.cat === c.k}" data-action="e-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div></div>
     <div><div class="eb" style="margin-bottom:8px">기본으로 기록할 항목</div><div class="chips">${Object.keys(FIELDS).map(k => `<button class="chip sm" aria-pressed="${d.fields.includes(k)}" data-action="e-field" data-v="${k}">${FIELDS[k].label}</button>`).join('')}</div></div>
     ${d.fields.includes('d') ? `<div><div class="eb" style="margin-bottom:8px">거리 단위</div><div class="chips">${['km','m'].map(u => `<button class="chip sm" aria-pressed="${d.unit === u}" data-action="e-unit" data-v="${u}">${u}</button>`).join('')}</div></div>` : ''}
