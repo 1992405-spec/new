@@ -98,6 +98,10 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* editor */
 .field{display:flex;flex-direction:column;gap:6px}
 .inp{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;font-size:16px;width:100%;min-width:0;color:var(--ink)}
+.field.grow{flex:1 1 0;min-width:0}
+/* iOS gives date fields a wide built-in size; let them shrink to the column */
+input.inp[type=date]{-webkit-appearance:none;appearance:none;display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;height:46px;text-align:left}
+input.inp[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
 .inp.big{font-family:var(--disp);font-size:30px;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:4px 0}
 textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .sets{display:grid;gap:7px;align-items:center}
@@ -114,7 +118,7 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .res input{background:rgba(0,0,0,.08);border:1.5px solid rgba(0,0,0,.25);border-radius:14px;padding:6px 10px;font-family:var(--num);font-weight:800;font-size:40px;width:100%;min-width:0;color:var(--lime-ink)}
 .res input.txt{font-family:var(--body);font-size:16px;font-weight:700;padding:12px 10px}
 .res input::placeholder{color:rgba(0,0,0,.25)}
-.circle{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;border:1px solid #333;background:none;color:var(--ink);flex:none}
+.circle{width:38px;height:38px;max-width:calc((100vw - 120px) / 7);max-height:calc((100vw - 120px) / 7);min-width:30px;min-height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;border:1px solid #333;background:none;color:var(--ink);flex:none}
 .circle[aria-pressed="true"]{background:var(--lime);color:#000;border-color:var(--lime)}
 .toggle{width:48px;height:28px;border-radius:14px;background:#333;position:relative;border:0;flex:none}
 .toggle::after{content:"";position:absolute;left:4px;top:4px;width:20px;height:20px;border-radius:50%;background:#888;transition:left .15s}
@@ -812,7 +816,7 @@ function pagePlan() {
     <div><div class="eb" style="margin-bottom:8px">종류</div><div class="chips">${cats().map(c => `<button class="chip" aria-pressed="${d.cat === c.k}" data-action="p-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div></div>
     <div><div class="eb" style="margin-bottom:8px">반복</div><div class="chips">${[['none','안 함'],['daily','매일'],['weekly','매주'],['monthly','매월']].map(([k, l]) => `<button class="chip" aria-pressed="${d.repeat === k}" data-action="p-repeat" data-v="${k}">${l}</button>`).join('')}</div></div>
     ${d.repeat === 'weekly' ? `<div class="row between">${WD.map((w, i) => `<button class="circle" aria-pressed="${d.days.includes(i)}" data-action="p-day" data-v="${i}" style="${i === 0 && !d.days.includes(0) ? 'color:var(--red)' : ''}">${w}</button>`).join('')}</div>` : ''}
-    <div class="row" style="gap:10px"><label class="field grow"><span class="eb">${d.repeat === 'none' ? '날짜' : '시작'}</span><input class="inp" type="date" id="pStart" data-p="start" value="${d.start}" style="color-scheme:dark"></label>${d.repeat === 'none' ? '' : `<label class="field grow"><span class="eb">종료 (선택)</span><input class="inp" type="date" id="pEnd" data-p="end" value="${d.end}" style="color-scheme:dark"></label>`}</div>
+    <div style="display:flex;flex-direction:column;gap:10px"><label class="field"><span class="eb">${d.repeat === 'none' ? '날짜' : '시작'}</span><input class="inp" type="date" id="pStart" data-p="start" value="${d.start}" style="color-scheme:dark"></label>${d.repeat === 'none' ? '' : `<label class="field"><span class="eb">종료 (선택)</span><input class="inp" type="date" id="pEnd" data-p="end" value="${d.end}" style="color-scheme:dark"></label>`}</div>
     ${d.cat === 'wod' ? `<label class="field"><span class="eb">WOD</span><select class="inp" id="pWod" data-p="wodId"><option value="">당일에 고르기</option>${[...state.mine, ...allNamed()].map(w => `<option value="${w.id}" ${d.wodId === w.id ? 'selected' : ''}>${esc(w.name)} ${w.parts[0]?.fmt.label ? `(${esc(w.parts[0].fmt.label)})` : ''}</option>`).join('')}</select></label>`
       : `<div><div class="eb" style="margin-bottom:8px">할 운동</div><div class="chips">${exs.map(e => `<button class="chip sm" aria-pressed="${d.exIds.includes(e.id)}" data-action="p-ex" data-v="${e.id}">${esc(e.name)}</button>`).join('')}</div></div>`}
   </div>
