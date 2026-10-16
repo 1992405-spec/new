@@ -895,7 +895,7 @@ function viewStats() {
   const pts = series(ui.statEx), first = pts[0]?.v, last = pts[pts.length-1]?.v, maxV = pts.length ? Math.max(...pts.map(p => p.v)) : 0;
   const days = {}; state.sessions.forEach(s => days[s.date] = (days[s.date] || 0) + 1);
   const start = addDays(mondayOf(now), -77); let heat = '';
-  for (let i = 0; i < 84; i++) { const d = addDays(start, i), k = ymd(d); const wd = WD[d.getDay()], sun = d.getDay() === 0 ? ' sun' : '';
+  for (let i = 0; i < 84; i++) { const d = addDays(start, i), k = ymd(d); const wd = 'SMTWTFS'[d.getDay()], sun = d.getDay() === 0 ? ' sun' : '';
     heat += d > now ? `<i class="f">${wd}</i>` : days[k] ? `<button class="${days[k] > 1 ? 'w' : 'l'}" data-action="open-day" data-date="${k}" aria-label="${dayLabel(k)} 기록 보기">${wd}</button>` : `<i class="${sun}">${wd}</i>`; }
   const wods = [...allNamed(), ...state.mine].map(w => ({w, b:bestWod(w.id)})).filter(x => x.b);
   return `<div class="row between"><span class="eb">돌아보기</span><span class="pill">${now.getFullYear()}.${pad(now.getMonth()+1)}</span></div>
