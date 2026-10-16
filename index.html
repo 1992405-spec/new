@@ -193,12 +193,15 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .fdiv{display:flex;align-items:center;gap:6px;background:#000;border:1px solid #2c2c2c;border-left:4px solid var(--lime);border-radius:12px;padding:6px 6px 6px 10px}
 .fdiv .c2{padding:4px 10px;font-size:13px}
 .fdiv .t{font-size:12px;color:var(--mut);font-weight:700}
-.mv{display:grid;grid-template-columns:64px minmax(0,1fr) 70px 26px;gap:6px;align-items:center}
+.mv{display:grid;grid-template-columns:56px minmax(0,1fr) 88px 26px;gap:6px;align-items:center}
 .mv input{background:#000;border:1px solid #2c2c2c;border-radius:12px;padding:9px 8px;font-size:16px;width:100%;min-width:0;color:var(--ink)}
 .mv input.q{font-family:var(--num);font-weight:700;font-size:18px;text-align:center;padding:7px 4px}
 .mv input.q::placeholder{color:#777}
 .mv input.ex{font-weight:700}
-.mv input.w{text-align:center}
+.mv input.w{text-align:center;padding-right:30px}
+/* each WOD exercise has its own kg/lb switch inside the weight box */
+.wcell{position:relative;min-width:0}
+.wu{position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:800;color:var(--lime);background:#141414;border:1px solid #333;border-radius:7px;padding:3px 4px;line-height:1}
 .mv input:focus{border-color:var(--lime);outline:0}
 .mv.hd>div{font-size:11px;color:var(--mut);text-align:center}
 .mv.hd>div:nth-child(2){text-align:left;padding-left:4px}
@@ -334,6 +337,8 @@ const oldPat = p => p && !p.tpl ? patFrom(DEF_PATTERNS.find(t => t.id === p.kind
 /* "없음": a part with no format; the label stays empty so summaries skip it */
 const NO_FMT = {id:'none', label:'', res:'text'};
 const fmtFind = id => id === 'none' ? NO_FMT : state.formats.find(x => x.id === id);
+const wNum = w => String(w || '').replace(/\s*(kg|lb)$/i, '');
+const mvUnit = m => (String(m.w || '').match(/(kg|lb)$/i)?.[1].toLowerCase()) || m.u || U();
 const fmtCopy = f => ({id:f.id, label:f.label, res:f.res});
 const qTxt = q => /^\d+$/.test(String(q || '')) ? `${q}회` : String(q || '');
 
@@ -756,7 +761,7 @@ function partHtml(it, i, p, pi) {
     : `<div class="frame"><div class="row between"><span class="lbl">구성</span><button class="pill ${ui.frEdit ? 'lime' : ''}" style="font-size:12px;padding:3px 10px" data-action="fr-toggle">${ui.frEdit ? '완료' : '편집'}</button></div><span class="lbl" style="font-weight:500">방식</span>${fmtChips(i, pi, p)}<span class="lbl" style="font-weight:500">패턴</span>${patChips(i, pi, p)}${ui.frEdit ? '<div class="sub" style="font-size:12px">칩을 누르면 수정, ✕는 삭제예요. 칩을 꾹 누르면 순서도 바꿀 수 있어요.</div>' : ''}</div>`;
   const ord = ui.mvOrder === i, first = pi === 0, last = pi === it.parts.length - 1;
   const rows = ord ? p.moves.map((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || scheme || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && j === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && j === p.moves.length - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`).join('')
-    : p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(m.w)}" placeholder="${U()}" aria-label="${j+1}번 무게"><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
+    : p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><div class="wcell"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(wNum(m.w))}" placeholder="-" aria-label="${j+1}번 무게"><button class="wu" data-action="mv-wu" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 무게 단위 바꾸기">${mvUnit(m)}</button></div><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
       <div class="sug" id="sug-${i}-${pi}-${j}"></div>${j < p.moves.length - 1 ? `<button class="ins" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${j + 1}" aria-label="여기서 구간 나누기"><b>구간 나누기</b></button>` : ''}`).join('');
   const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${p.fmt.res === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, p.fmt.res)}</div>` : '';
   return `<div class="part">${head}${ord ? '' : '<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>'}${rows}
@@ -1079,12 +1084,12 @@ function openTpl(src, kind = 'mine') {
 /* a saved WOD keeps frames and exercises, not results */
 function tplFromItem(it) { return {id:it.wodId || null, name:(it.name || '').trim() || 'Daily WOD', note:'', parts:it.parts.map(p => ({fmt:{...p.fmt}, pats:pList(p).map(x => ({...x})), moves:p.moves.filter(m => m.n.trim()).map(m => ({n:m.n.trim(), exId:m.exId || null, q:(m.q || '').trim(), w:(m.w || '').trim()}))})).filter(p => p.moves.length)}; }
 /* drop empty rows; link every exercise name to the exercise list, adding new ones so they show up in search */
-const withUnit = w => { w = String(w || '').trim(); return /^[\d.]+(\/[\d.]+)?$/.test(w) ? w + U() : w; };
+const withUnit = (w, u) => { w = String(w || '').trim(); return /^[\d.]+(\/[\d.]+)?$/.test(w) ? w + (u || U()) : w; };
 function cleanWod(it, onNew) {
   const parts = it.parts.map(p => ({...p, moves:p.moves.filter(m => m.n.trim()).map(m => {
     let ex = (m.exId && exById(m.exId)?.name === m.n.trim() && exById(m.exId)) || findEx(m.n);
     if (!ex) { ex = {id:uid(), name:m.n.trim(), cat:[m.w ? 'weight' : 'body', 'etc'].find(k => state.cats.some(c => c.k === k)) || state.cats[0].k, fields:m.w ? ['w','r'] : ['r'], unit:'km'}; state.exercises.push(ex); onNew(); }
-    return {n:ex.name, exId:ex.id, q:(m.q || '').trim(), w:withUnit(m.w)}; })})).filter(p => p.moves.length || p.res?.v || p.res?.status);
+    return {n:ex.name, exId:ex.id, q:(m.q || '').trim(), w:withUnit(m.w, m.u)}; })})).filter(p => p.moves.length || p.res?.v || p.res?.status);
   if (!parts.length && !wodResult(it)) return null;
   return {...it, name:(it.name || '').trim() || 'Daily WOD', parts:parts.length ? parts : [{...it.parts[0], moves:[]}]};
 }
@@ -1144,6 +1149,8 @@ const A = {
     render(true); if (t && k < 0) document.querySelector(`[data-patv="${el.dataset.pi}"][data-pk="${p.pats.length - 1}"][data-i="${el.dataset.i}"]`)?.focus(); },
   'set-patv': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; pList(p)[+el.dataset.pk].v = el.dataset.v; render(true); },
   'mv-add': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.moves.push(blankMove()); render(true); const r = document.querySelectorAll(`[data-i="${el.dataset.i}"][data-pi="${el.dataset.pi}"][data-k="n"]`); r[r.length - 1]?.focus(); },
+  'mv-wu': el => { const m = curItems()[+el.dataset.i].parts[+el.dataset.pi].moves[+el.dataset.j], u = mvUnit(m) === 'kg' ? 'lb' : 'kg';
+    m.u = u; if (m.w) m.w = wNum(m.w) + u; el.textContent = u; updateSum(el.dataset.i); },
   'mv-order': el => { ui.mvOrder = ui.mvOrder === +el.dataset.i ? null : +el.dataset.i; render(true); },
   /* move one exercise up or down; past the edge of a section it moves into the next section */
   'mv-move': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi, j = +el.dataset.j, d = +el.dataset.d, p = it.parts[pi], m = p.moves[j];
@@ -1335,7 +1342,7 @@ document.addEventListener('input', e => {
   const t = e.target, ds = t.dataset;
   if (ds.d) { ui.draft[ds.d] = t.value; if (ds.d === 'date') { if (!t.value) ui.draft.date = TODAY(); else if (t.value > TODAY()) { ui.draft.date = TODAY(); toast('기록은 오늘까지 쓸 수 있어요'); } render(true); } return; }
   if (ds.f && ds.s !== undefined) { ui.draft.items[+ds.i].sets[+ds.s][ds.f] = t.value; return; }
-  if (ds.mv !== undefined) { const m = curItems()[+ds.i].parts[+ds.pi].moves[+ds.mv]; m[ds.k] = t.value; if (ds.k === 'n') { m.exId = null; showSug(t, ds); } return; }
+  if (ds.mv !== undefined) { const m = curItems()[+ds.i].parts[+ds.pi].moves[+ds.mv]; if (ds.k === 'w') { const u = mvUnit(m); m.w = /(kg|lb)$/i.test(t.value.trim()) ? t.value : t.value.trim() ? t.value.trim() + u : ''; m.u = u; updateSum(ds.i); return; } m[ds.k] = t.value; if (ds.k === 'n') { m.exId = null; showSug(t, ds); } return; }
   if (ds.patv !== undefined) { const p = curItems()[+ds.i].parts[+ds.patv]; pList(p)[+ds.pk].v = t.value.trim(); const sc = schemeOfP(p); document.querySelectorAll(`input.q[data-i="${ds.i}"][data-pi="${ds.patv}"]`).forEach(q => q.placeholder = sc || '10'); return; }
   if (ds.framepv !== undefined) { ui.frame.pats[+ds.framepv].v = t.value.trim(); return; }
   if (ds.wn !== undefined) { curItems()[+ds.wn].name = t.value; return; }
