@@ -131,8 +131,9 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 
 /* stats */
 .heat{display:grid;grid-template-rows:repeat(7,1fr);grid-auto-flow:column;grid-auto-columns:1fr;gap:4px}
-.heat i,.heat button{aspect-ratio:1;border-radius:4px;background:#222;border:0;padding:0}
-.heat .l{background:var(--lime)}.heat .w{background:var(--ink)}.heat .f{background:none;border:1px dashed #333}
+.heat i,.heat button{aspect-ratio:1;border-radius:4px;background:#222;border:0;padding:0;display:grid;place-items:center;font-size:10px;font-weight:700;font-style:normal;line-height:1;color:#5c5c5c}
+.heat .sun{color:#a55}
+.heat .l{background:var(--lime);color:#000}.heat .w{background:var(--ink);color:#000}.heat .f{background:none;border:1px dashed #333;color:#3a3a3a}
 .chart svg{width:100%;height:auto;display:block}
 
 /* sheet */
@@ -894,7 +895,8 @@ function viewStats() {
   const pts = series(ui.statEx), first = pts[0]?.v, last = pts[pts.length-1]?.v, maxV = pts.length ? Math.max(...pts.map(p => p.v)) : 0;
   const days = {}; state.sessions.forEach(s => days[s.date] = (days[s.date] || 0) + 1);
   const start = addDays(mondayOf(now), -77); let heat = '';
-  for (let i = 0; i < 84; i++) { const d = addDays(start, i), k = ymd(d); heat += d > now ? '<i class="f"></i>' : days[k] ? `<button class="${days[k] > 1 ? 'w' : 'l'}" data-action="open-day" data-date="${k}" aria-label="${dayLabel(k)} 기록 보기"></button>` : '<i></i>'; }
+  for (let i = 0; i < 84; i++) { const d = addDays(start, i), k = ymd(d); const wd = WD[d.getDay()], sun = d.getDay() === 0 ? ' sun' : '';
+    heat += d > now ? `<i class="f">${wd}</i>` : days[k] ? `<button class="${days[k] > 1 ? 'w' : 'l'}" data-action="open-day" data-date="${k}" aria-label="${dayLabel(k)} 기록 보기">${wd}</button>` : `<i class="${sun}">${wd}</i>`; }
   const wods = [...allNamed(), ...state.mine].map(w => ({w, b:bestWod(w.id)})).filter(x => x.b);
   return `<div class="row between"><span class="eb">돌아보기</span><span class="pill">${now.getFullYear()}.${pad(now.getMonth()+1)}</span></div>
   <div class="row" style="align-items:flex-end;gap:10px"><h1 class="disp" style="font-size:60px">${now.getMonth()+1}월</h1><span class="n" style="font-size:70px;color:var(--lime)">${month}</span><span class="disp" style="font-size:30px;padding-bottom:6px">회</span></div>
