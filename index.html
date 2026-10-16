@@ -811,7 +811,7 @@ function pagePlan() {
   return `<div class="row between"><button class="pill" data-action="close-page">취소</button><span class="eb">${d.id ? '반복 계획 수정' : '반복 계획 만들기'}</span><button class="pill solid" data-action="save-plan">저장</button></div>
   <input class="inp big" id="pTitle" data-p="title" value="${esc(d.title)}" placeholder="계획 제목 (예: 하체 + 가슴)" style="font-size:40px" aria-label="계획 제목">
   <div class="row" style="gap:10px;align-items:baseline"><span class="n" style="font-size:44px;color:var(--lime)">${esc(repeatText(d))}</span><span class="sub">${d.notify ? '전날 밤 알림' : '알림 없음'}</span></div>
-  <div><div class="sq">${occ.map(c => `<i class="${c}"></i>`).join('')}</div><div class="row between sub" style="font-size:11.5px;margin-top:6px"><span>${md(d.start)} 시작</span><span>라임 = 지난 주 · 점선 = 예정</span><span>${d.end ? md(d.end) + ' 종료' : '종료 없음'}</span></div></div>
+  <div><div class="sq">${occ.map(c => `<i class="${c}"></i>`).join('')}</div><div class="row between sub" style="font-size:11.5px;margin-top:6px"><span>${md(d.start)} 시작</span><span>${d.end ? md(d.end) + ' 종료' : '종료 없음'}</span></div></div>
   <div class="card" style="display:flex;flex-direction:column;gap:14px">
     <div><div class="eb" style="margin-bottom:8px">종류</div><div class="chips">${cats().map(c => `<button class="chip" aria-pressed="${d.cat === c.k}" data-action="p-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div></div>
     <div><div class="eb" style="margin-bottom:8px">반복</div><div class="chips">${[['none','안 함'],['daily','매일'],['weekly','매주'],['monthly','매월']].map(([k, l]) => `<button class="chip" aria-pressed="${d.repeat === k}" data-action="p-repeat" data-v="${k}">${l}</button>`).join('')}</div></div>
