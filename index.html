@@ -227,7 +227,7 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
   <main class="screen" id="screen"></main>
   <nav class="tabs" id="tabs" aria-label="메뉴">
     <button class="tab" data-tab="cal"><i></i>캘린더</button>
-    <button class="tab" data-tab="wod"><i></i>와드</button>
+    <button class="tab" data-tab="wod"><i></i>WOD</button>
     <button class="tab" data-tab="lib"><i></i>운동목록</button>
     <button class="tab" data-tab="stats"><i></i>돌아보기</button>
   </nav>
@@ -270,7 +270,7 @@ const DEF_CATS = [
   {k:'body', label:'맨몸·홈트', color:'#FFD84D'},
   {k:'cardio', label:'유산소', color:'#7CC4FF'},
   {k:'swim', label:'수영', color:'#F2F2F2'},
-  {k:'wod', label:'와드', color:'#FF9F43'},
+  {k:'wod', label:'WOD', color:'#FF9F43'},
   {k:'etc', label:'기타', color:'#777777'}
 ];
 const CAT_COLORS = ['#C8F031','#FFD84D','#7CC4FF','#F2F2F2','#FF9F43','#FF6B6B','#B794F6','#5EEAD4','#F472B6','#777777'];
@@ -320,6 +320,11 @@ const qTxt = q => /^\d+$/.test(String(q || '')) ? `${q}회` : String(q || '');
 
 const OLD_RES = {fortime:'time', amrap:'rr', emom:'done', deathby:'rr', igyg:'time', tabata:'reps', custom:'text'};
 const resFromOld = (r = {}) => ({v:String(r.time || (r.rounds ? `${r.rounds}${r.reps ? '+' + r.reps : ''}` : r.reps || r.text || '')), status:r.status || '', short:r.short || ''});
+/* built-in exercises are named in English; the Korean name is kept (ko) so Korean typing still finds them */
+const EX_EN = {"백스쿼트": "Back Squat", "벤치프레스": "Bench Press", "데드리프트": "Deadlift", "오버헤드프레스": "Overhead Press", "바벨로우": "Barbell Row", "스러스터": "Thruster", "클린앤저크": "Clean & Jerk", "스내치": "Snatch", "파워클린": "Power Clean", "행 파워클린": "Hang Power Clean", "푸시저크": "Push Jerk", "클린": "Clean", "파워스내치": "Power Snatch", "스쿼트 스내치": "Squat Snatch", "오버헤드 스쿼트": "Overhead Squat", "케틀벨 스윙": "Kettlebell Swing", "풀업": "Pull-up", "푸시업": "Push-up", "에어스쿼트": "Air Squat", "싯업": "Sit-up", "버피": "Burpee", "더블언더": "Double Under", "핸드스탠드 푸시업": "Handstand Push-up", "토투바": "Toes-to-Bar", "머슬업": "Muscle-up", "박스점프": "Box Jump", "월볼": "Wall Ball", "플랭크": "Plank", "링 딥스": "Ring Dip", "피스톨 스쿼트": "Pistol Squat", "백 익스텐션": "Back Extension", "러닝": "Run", "로잉머신": "Row", "사이클": "Bike", "스키에르그": "SkiErg", "자유형": "Freestyle", "평영": "Breaststroke"};
+const enName = n => { n = String(n || ''); for (const k of Object.keys(EX_EN).sort((a, b) => b.length - a.length)) if (n === k || n.startsWith(k + ' ')) return EX_EN[k] + n.slice(k.length); return n; };
+const exMatch = (e, q) => norm(e.name).includes(q) || (e.ko && norm(e.ko).includes(q));
+const exIs = (e, n) => norm(e.name) === norm(n) || (e.ko && norm(e.ko) === norm(n));
 /* ---------- seed data (examples) ---------- */
 function seedExercises() {
   const W = ['w','r'], B = ['r'], C = ['d','t'];
@@ -329,7 +334,7 @@ function seedExercises() {
     ['pu','풀업','body',B],['push','푸시업','body',B],['air','에어스쿼트','body',B],['situp','싯업','body',B],['burpee','버피','body',B],['du','더블언더','body',B],['hspu','핸드스탠드 푸시업','body',B],['t2b','토투바','body',B],['mu','머슬업','body',B],['box','박스점프','body',B],['wb','월볼','weight',W],['plank','플랭크','body',['t']],['dip','링 딥스','body',B],['pistol','피스톨 스쿼트','body',B],['backext','백 익스텐션','body',B],
     ['run','러닝','cardio',C,'km'],['rowerg','로잉머신','cardio',C,'m'],['bike','사이클','cardio',C,'km'],['ski','스키에르그','cardio',C,'m'],
     ['free','자유형','swim',C,'m'],['breast','평영','swim',C,'m']
-  ].map(([id,name,cat,fields,unit]) => ({id, name, cat, fields:[...fields], unit:unit || 'km'}));
+  ].map(([id,name,cat,fields,unit]) => ({id, name:EX_EN[name] || name, ko:name, cat, fields:[...fields], unit:unit || 'km'}));
 }
 const NAMED_OLD = [
   {id:'fran', name:'Fran', format:'fortime', scheme:'21-15-9', moves:[['21-15-9','스러스터 43/29kg'],['21-15-9','풀업']]},
@@ -357,13 +362,15 @@ const NAMED_OLD = [
   {id:'michael', name:'Michael', format:'fortime', rounds:3, moves:[['800m','러닝'],['50회','백 익스텐션'],['50회','싯업']]},
   {id:'randy', name:'Randy', format:'fortime', moves:[['75회','파워스내치 34/25kg']]},
   {id:'nate', name:'Nate', format:'amrap', cap:20, moves:[['2회','머슬업'],['4회','핸드스탠드 푸시업'],['8회','케틀벨 스윙 32/24kg']]}
-].map(w => ({...w, named:true, moves:w.moves.map(([a,n]) => ({a, n}))}));
+].map(w => ({...w, named:true, moves:w.moves.map(([a,n]) => ({a, n:enName(n)}))}));
 const NAMED = NAMED_OLD.map(w => tplFromOld(w));
 /* built-in named WODs plus the ones the user adds (state.named, editable) */
-const allNamed = () => [...NAMED, ...state.named];
+const ownNamed = () => state.named.filter(x => !NAMED.some(w => w.id === x.id));
+/* an edited built-in is kept in state.named under the same id and replaces the original */
+const allNamed = () => [...NAMED.map(w => state.named.find(x => x.id === w.id) || w), ...ownNamed()];
 const seedMine = () => [
-  {id:'m1', name:'월요일 파트너 와드', format:'igyg', cap:24, rounds:10, moves:[{a:'10회',n:'버피'},{a:'15cal',n:'로잉머신'}], note:'박스 수업에서 받은 와드'},
-  {id:'m2', name:'버피 Death By', format:'deathby', moves:[{a:'매 분 +1',n:'버피'}]}
+  {id:'m1', name:'월요일 파트너 WOD', format:'igyg', cap:24, rounds:10, moves:[{a:'10회',n:'Burpee'},{a:'15cal',n:'Row'}], note:'박스 수업에서 받은 WOD'},
+  {id:'m2', name:'Burpee Death By', format:'deathby', moves:[{a:'매 분 +1',n:'Burpee'}]}
 ];
 function seedSessions() {
   const out = [], today = new Date(); today.setHours(0,0,0,0);
@@ -380,7 +387,7 @@ function seedSessions() {
       s = {title:'등 + 후면', duration:60, items:[ex('dl', [{w:dl,r:5},{w:dl,r:5},{w:dl,r:3}], ['w','r']), ex('pu', [12,11,10,9].map(r => ({r:r + Math.round(2*p) - 2})), ['r'])], planId:'p3'}; }
     else if (wd === 6) { const w = NAMED_OLD[[0,2,4][turn++ % 3]];
       const res = w.id === 'fran' ? {time:secToMs(460 - 108*p)} : w.id === 'cindy' ? {rounds:String(15 + Math.round(4*p)), reps:String(Math.round(8*p))} : {time:secToMs(790 - 70*p)};
-      s = {title:`와드 · ${w.name}`, duration:40, items:[{type:'wod', id:uid(), wodId:w.id, name:w.name, format:w.format, scheme:w.scheme || '', moves:w.moves.map(m => ({...m})), scale:'Rx', res}], planId:'p4'}; }
+      s = {title:`WOD · ${w.name}`, duration:40, items:[{type:'wod', id:uid(), wodId:w.id, name:w.name, format:w.format, scheme:w.scheme || '', moves:w.moves.map(m => ({...m})), scale:'Rx', res}], planId:'p4'}; }
     else if (wd === 0 && back % 14 < 7) s = {title:'수영', duration:45, items:[ex('free', [{d:1500, t:secToMs(2050 - 120*p)}], ['d','t'])]};
     if (s) out.push({id:uid(), date:ymd(d), mood:['💪','🙂','🙂','😐','💪','🥵'][out.length % 6], memo:'', place:'', ...s});
   }
@@ -395,7 +402,7 @@ function seedPlans() {
     {id:'p1', title:'하체 + 가슴', cat:'weight', repeat:'weekly', days:[1], start, end:'', exIds:['sq','bp'], wodId:'', notify:true, skip:[]},
     {id:'p2', title:'5km 러닝', cat:'cardio', repeat:'weekly', days:[2], start, end:'', exIds:['run'], wodId:'', notify:false, skip:[]},
     {id:'p3', title:'등 + 후면', cat:'weight', repeat:'weekly', days:[5], start, end:'', exIds:['dl','pu'], wodId:'', notify:true, skip:[]},
-    {id:'p4', title:'토요일 와드', cat:'wod', repeat:'weekly', days:[6], start, end:'', exIds:[], wodId:'', notify:false, skip:[]},
+    {id:'p4', title:'토요일 WOD', cat:'wod', repeat:'weekly', days:[6], start, end:'', exIds:[], wodId:'', notify:false, skip:[]},
     {id:'p5', title:'Murph 도전', cat:'wod', repeat:'none', days:[], start:sat, end:'', exIds:[], wodId:'murph', notify:true, skip:[], note:'조끼 없이 Scaled로 먼저'}
   ].map(p => ({...p, created:t}));
 }
@@ -417,7 +424,7 @@ function partFromOld(o) {
     return {n, exId:m.exId || null, q:schemeOf(pat) && a === pat.v ? '' : a.replace(/회$/, ''), w}; })};
 }
 function tplFromOld(w) { return {id:w.id, name:w.name, note:w.note || '', named:!!w.named, parts:[partFromOld(w)]}; }
-function wodFromOld(it) { return {type:'wod', id:it.id || uid(), wodId:it.savedId || it.wodId || null, name:it.name || '오늘의 와드', parts:[partFromOld(it)], scale:it.scale || 'Rx', res:resFromOld(it.res), partner:it.res?.partner || ''}; }
+function wodFromOld(it) { return {type:'wod', id:it.id || uid(), wodId:it.savedId || it.wodId || null, name:it.name || 'Daily WOD', parts:[partFromOld(it)], scale:it.scale || 'Rx', res:resFromOld(it.res), partner:it.res?.partner || ''}; }
 function migrate(st) {
   st.cats ||= DEF_CATS.map(c => ({...c}));
   st.formats ||= DEF_FORMATS.map(f => ({...f}));
@@ -427,9 +434,19 @@ function migrate(st) {
   [...(st.mine || []), ...(st.named || [])].forEach(w => w.parts?.forEach(toPats));
   st.mine = (st.mine || []).map(w => w.parts ? w : tplFromOld(w));
   st.named ||= [];
+  /* an exercise whose category is gone (or WOD) would be counted but never listed; file it under 기타 */
+  st.exercises.forEach(e => { if (e.cat === 'wod' || !st.cats.some(c => c.k === e.cat)) e.cat = 'etc'; });
+  /* 2026-10-16: "와드" is written WOD, "오늘의 와드" is Daily WOD */
+  st.cats.forEach(c => { if (c.k === 'wod' && c.label === '와드') c.label = 'WOD'; });
+  for (const s of st.sessions) { if (s.title) s.title = s.title.replace(/^와드 · /, 'WOD · '); for (const it of s.items) if (it.type === 'wod' && (it.name === '오늘의 와드' || it.name === 'Workout of the Day')) it.name = 'Daily WOD'; }
   for (const s of st.sessions) s.items = s.items.map(it => it.type === 'wod' && !it.parts ? wodFromOld(it) : it);
-  for (const e of seedExercises()) if (['pc','hpc','pj','clean','psn','sqsn','ohs','dip','pistol','backext'].includes(e.id) && !st.exercises.some(x => x.id === e.id || x.name === e.name)) st.exercises.push(e);
-  const byName = n => st.exercises.find(e => norm(e.name) === norm(n));
+  for (const e of seedExercises()) if (['pc','hpc','pj','clean','psn','sqsn','ohs','dip','pistol','backext'].includes(e.id) && !st.exercises.some(x => x.id === e.id || x.name === e.name || x.name === e.ko)) st.exercises.push(e);
+  const seeds = seedExercises();
+  st.exercises.forEach(e => { const s0 = seeds.find(x => x.id === e.id); if (s0 && (e.name === s0.ko || e.name === s0.name)) { e.name = s0.name; e.ko = s0.ko; } });
+  const toEn = m => { m.n = enName(m.n); };
+  for (const s of st.sessions) for (const it of s.items) if (it.type === 'wod') it.parts.forEach(p => p.moves.forEach(toEn));
+  [...st.mine, ...st.named].forEach(w => w.parts.forEach(p => p.moves.forEach(toEn)));
+  const byName = n => st.exercises.find(e => exIs(e, n));
   const link = m => { if (!m.exId || !st.exercises.some(e => e.id === m.exId)) m.exId = byName(m.n)?.id || null; };
   for (const s of st.sessions) for (const it of s.items) if (it.type === 'wod') it.parts.forEach(p => p.moves.forEach(link));
   [...st.mine, ...st.named].forEach(w => w.parts.forEach(p => p.moves.forEach(link)));
@@ -437,7 +454,7 @@ function migrate(st) {
 }
 load();
 
-const ui = {tab:'cal', page:null, sel:TODAY(), month:TODAY().slice(0, 7), view:'month', hidden:[], wodTab:'named', libCat:'all', libQ:'', pickQ:'', pickCat:'all', statEx:'sq', confirm:null, draft:null, pdraft:null, exd:null, tdraft:null, dayDate:null, frEdit:false, grouping:false, groupSel:[], fe:null, ce:null};
+const ui = {tab:'cal', page:null, sel:TODAY(), month:TODAY().slice(0, 7), view:'month', hidden:[], wodTab:'mine', libCat:'all', libQ:'', pickQ:'', pickCat:'all', statEx:'sq', confirm:null, draft:null, pdraft:null, exd:null, tdraft:null, dayDate:null, frEdit:false, grouping:false, groupSel:[], fe:null, ce:null};
 
 const exById = id => state.exercises.find(e => e.id === id);
 const wodById = id => allNamed().find(w => w.id === id) || state.mine.find(w => w.id === id);
@@ -547,8 +564,8 @@ const GUIDE_KEY = 'setlog-guide-seen';
 const GUIDE = [
   ['캘린더', '날짜를 누르면 그날 기록이 보여요. 칸 아래 색 막대는 기록, 테두리만 있는 건 계획이에요.'],
   ['기록하기', '운동이 끝나고 세트마다 무게와 횟수를 적어요. 반복 계획이면 지난 무게가 미리 채워져요.'],
-  ['와드 기록', '구성(For Time, AMRAP…)을 고르고 운동을 적어요. 운동 사이에서 구간을 나누면 A, B로 따로 기록돼요.'],
-  ['와드 모음', '네임드 와드와 내가 만든 와드를 저장해 두고 바로 불러와요. 네임드 와드도 직접 추가할 수 있어요.'],
+  ['WOD 기록', '구성(For Time, AMRAP…)을 고르고 운동을 적어요. 운동 사이에서 구간을 나누면 A, B로 따로 기록돼요.'],
+  ['WOD 모음', '네임드 WOD와 내가 만든 WOD를 저장해 두고 바로 불러와요. 네임드 WOD도 직접 추가할 수 있어요.'],
   ['돌아보기', '주간 목표 연속 기록과 운동별 성장 그래프를 봐요.']
 ];
 function showGuide() {
@@ -665,9 +682,9 @@ function pageEdit() {
   <datalist id="exNames">${state.exercises.map(e => `<option value="${esc(e.name)}">`).join('')}</datalist>
   <input class="inp big" id="dTitle" data-d="title" value="${esc(d.title)}" placeholder="오늘 운동 제목 (예: 하체 데이)" aria-label="운동 제목">
   <div><div class="eb" style="margin-bottom:8px">오늘 컨디션</div><div class="chips">${MOODS.map(([e, l]) => `<button class="chip" aria-pressed="${d.mood === e}" data-action="mood" data-v="${e}">${e} ${l}</button>`).join('')}</div></div>
-  ${d.items.map((it, i) => it.type === 'wod' ? wodCard(it, i) : exEditCard(it, i)).join('') || '<div class="card empty">아래에서 운동이나 와드를 추가해 주세요.</div>'}
-  ${ui.grouping ? `<div class="groupbar"><span class="sub" style="color:var(--ink)">${ui.groupSel.length}개 선택</span><span class="grow"></span><button class="pill" data-action="group-cancel">취소</button><button class="btn lime small" style="width:auto;padding:10px 18px" data-action="group-do">와드로 묶기</button></div>`
-    : `<div class="row" style="gap:8px"><button class="btn out small" data-action="pick-ex">+ 운동 · 와드 추가</button>${d.items.filter(it => it.type === 'ex').length >= 2 ? '<button class="btn out small" style="width:auto;padding-inline:16px;white-space:nowrap" data-action="group-start">와드로 묶기</button>' : ''}</div>`}
+  ${d.items.map((it, i) => it.type === 'wod' ? wodCard(it, i) : exEditCard(it, i)).join('') || '<div class="card empty">아래에서 운동이나 WOD를 추가해 주세요.</div>'}
+  ${ui.grouping ? `<div class="groupbar"><span class="sub" style="color:var(--ink)">${ui.groupSel.length}개 선택</span><span class="grow"></span><button class="pill" data-action="group-cancel">취소</button><button class="btn lime small" style="width:auto;padding:10px 18px" data-action="group-do">WOD로 묶기</button></div>`
+    : `<div class="row" style="gap:8px"><button class="btn out small" data-action="pick-ex">+ 운동 · WOD 추가</button>${d.items.filter(it => it.type === 'ex').length >= 2 ? '<button class="btn out small" style="width:auto;padding-inline:16px;white-space:nowrap" data-action="group-start">WOD로 묶기</button>' : ''}</div>`}
   <div class="field"><span class="eb">메모</span><textarea class="inp" id="dMemo" data-d="memo" placeholder="오늘 느낀 점, 다음에 신경 쓸 것">${esc(d.memo)}</textarea></div>
   <input class="inp" id="dPlace" data-d="place" value="${esc(d.place)}" placeholder="장소 (선택)" aria-label="장소">`;
 }
@@ -684,7 +701,7 @@ function exEditCard(it, i) {
     <div class="row" style="gap:8px"><button class="add" data-action="add-set" data-i="${i}">+ 세트 추가</button>${it.sets.length > 1 ? `<button class="add" style="width:auto;padding:9px 14px" data-action="del-set" data-i="${i}">− 마지막 세트</button>` : ''}</div>
   </div>`;
 }
-const findEx = name => state.exercises.find(e => norm(e.name) === norm(name));
+const findEx = name => state.exercises.find(e => exIs(e, name));
 /* WOD card: each part is a frame (format + pattern) followed by its exercises; a frame can be inserted between exercises */
 function usage() { const c = {}; for (const s of state.sessions) for (const it of s.items) { if (it.type === 'ex') c[it.exId] = (c[it.exId] || 0) + 1; else wodMoves(it).forEach(m => { if (m.exId) c[m.exId] = (c[m.exId] || 0) + 1; }); } return c; }
 function fmtChips(i, pi, p) {
@@ -743,7 +760,7 @@ function wodResultBox(it, i) {
       ${st === 'DNF' ? `<div class="res"><label>못 채운 렙 (−)<input data-i="${i}" data-res="short" inputmode="numeric" value="${esc(String(it.res?.short ?? '').replace(/^-/, ''))}" placeholder="6"></label></div>` : ''}
       ${type === 'done' && !st ? '<div class="sub" style="font-weight:500">다 했으면 DONE, 못 채웠으면 DNF를 눌러요</div>' : `<div class="res"><label>${st === 'DNF' ? '적고 싶을 때만' : RES_TYPES[type].label}${resInput(`data-i="${i}" data-res="v" class="${type === 'text' ? 'txt' : ''}"`, it.res?.v, type)}</label></div>`}
       <div class="sub" style="font-weight:500">결과: <b data-respv="${i}">${esc(wodResult(it) || '-')}</b></div>
-      ${it.wodId ? b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 와드의 첫 기록이에요</div>' : ''}
+      ${it.wodId ? b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 WOD의 첫 기록이에요</div>' : ''}
     </div>`;
 }
 function wodCard(it, i) {
@@ -751,18 +768,18 @@ function wodCard(it, i) {
   const freq = state.exercises.filter(e => u[e.id]).sort((a, b) => u[b.id] - u[a.id]).slice(0, 8);
   const mine = it.wodId && state.mine.some(w => w.id === it.wodId);
   return `<div class="card wc">
-    <div class="row between" style="gap:8px"><input class="inp big" data-wn="${i}" value="${esc(it.name)}" placeholder="${tpl ? '와드 제목' : '오늘의 와드'}" aria-label="와드 제목" style="font-family:var(--num);font-weight:800;font-size:28px;padding:6px 10px">
-      ${it.wodId && !tpl ? '<span class="pill lime">불러옴</span>' : ''}${tpl ? '' : `<button class="icon" data-action="remove-item" data-i="${i}" aria-label="와드 빼기">✕</button>`}</div>
+    <div class="row between" style="gap:8px"><input class="inp big" data-wn="${i}" value="${esc(it.name)}" placeholder="${tpl ? 'WOD 제목' : 'Daily WOD'}" aria-label="WOD 제목" style="font-family:var(--num);font-weight:800;font-size:28px;padding:6px 10px">
+      ${it.wodId && !tpl ? '<span class="pill lime">불러옴</span>' : ''}${tpl ? '' : `<button class="icon" data-action="remove-item" data-i="${i}" aria-label="WOD 빼기">✕</button>`}</div>
     ${it.parts.map((p, pi) => partHtml(it, i, p, pi)).join('')}
     ${freq.length ? `<div class="lbl">자주 한 운동</div><div class="chips2">${freq.map(e => `<button class="c2" data-action="mv-quick" data-i="${i}" data-id="${e.id}">${esc(e.name)}</button>`).join('')}</div>` : ''}
     ${tpl ? '' : wodResultBox(it, i)}
-    ${tpl ? '' : mine ? '<div class="sub" style="text-align:center">내 와드에 저장된 와드예요</div>' : `<button class="add" data-action="dw-save" data-i="${i}">☆ ${it.wodId ? '내 와드로 복사해서 저장' : '이 와드를 내 와드로 저장'} (선택)</button>`}
+    ${tpl ? '' : mine ? '<div class="sub" style="text-align:center">내 WOD에 저장된 WOD예요</div>' : `<button class="add" data-action="dw-save" data-i="${i}">☆ ${it.wodId ? '내 WOD로 복사해서 저장' : '이 WOD를 내 WOD로 저장'} (선택)</button>`}
   </div>`;
 }
 /* saved WOD editor: the same card, without a result */
 function pageTpl() {
   const d = ui.tdraft;
-  return `<div class="row between"><button class="pill" data-action="tpl-cancel">취소</button><span class="eb">${d.kind === 'named' ? (d.id ? '네임드 와드 수정' : '네임드 와드 추가') : d.id ? '내 와드 수정' : '내 와드 만들기'}</span><button class="pill solid" data-action="tpl-save">저장</button></div>
+  return `<div class="row between"><button class="pill" data-action="tpl-cancel">취소</button><span class="eb">${d.kind === 'named' ? (d.id ? '네임드 WOD 수정' : '네임드 WOD 추가') : d.id ? '내 WOD 수정' : '내 WOD 만들기'}</span><button class="pill solid" data-action="tpl-save">저장</button></div>
   ${wodCard(d.items[0], 0)}
   <input class="inp" id="tNote" data-tn="note" value="${esc(d.note || '')}" placeholder="메모 (무게, 스케일 방법)" aria-label="메모">`;
 }
@@ -784,7 +801,7 @@ function pagePlan() {
     <div><div class="eb" style="margin-bottom:8px">반복</div><div class="chips">${[['none','안 함'],['daily','매일'],['weekly','매주'],['monthly','매월']].map(([k, l]) => `<button class="chip" aria-pressed="${d.repeat === k}" data-action="p-repeat" data-v="${k}">${l}</button>`).join('')}</div></div>
     ${d.repeat === 'weekly' ? `<div class="row between">${WD.map((w, i) => `<button class="circle" aria-pressed="${d.days.includes(i)}" data-action="p-day" data-v="${i}" style="${i === 0 && !d.days.includes(0) ? 'color:var(--red)' : ''}">${w}</button>`).join('')}</div>` : ''}
     <div class="row" style="gap:10px"><label class="field grow"><span class="eb">${d.repeat === 'none' ? '날짜' : '시작'}</span><input class="inp" type="date" id="pStart" data-p="start" value="${d.start}" style="color-scheme:dark"></label>${d.repeat === 'none' ? '' : `<label class="field grow"><span class="eb">종료 (선택)</span><input class="inp" type="date" id="pEnd" data-p="end" value="${d.end}" style="color-scheme:dark"></label>`}</div>
-    ${d.cat === 'wod' ? `<label class="field"><span class="eb">와드</span><select class="inp" id="pWod" data-p="wodId"><option value="">당일에 고르기</option>${[...state.mine, ...allNamed()].map(w => `<option value="${w.id}" ${d.wodId === w.id ? 'selected' : ''}>${esc(w.name)} (${esc(w.parts[0]?.fmt.label || '')})</option>`).join('')}</select></label>`
+    ${d.cat === 'wod' ? `<label class="field"><span class="eb">WOD</span><select class="inp" id="pWod" data-p="wodId"><option value="">당일에 고르기</option>${[...state.mine, ...allNamed()].map(w => `<option value="${w.id}" ${d.wodId === w.id ? 'selected' : ''}>${esc(w.name)} (${esc(w.parts[0]?.fmt.label || '')})</option>`).join('')}</select></label>`
       : `<div><div class="eb" style="margin-bottom:8px">할 운동</div><div class="chips">${exs.map(e => `<button class="chip sm" aria-pressed="${d.exIds.includes(e.id)}" data-action="p-ex" data-v="${e.id}">${esc(e.name)}</button>`).join('')}</div></div>`}
   </div>
   <div class="card row between" style="padding:14px 18px"><span>전날 밤 알림</span><button class="toggle" aria-pressed="${!!d.notify}" data-action="p-notify" aria-label="전날 밤 알림"></button></div>
@@ -805,16 +822,16 @@ function viewWod() {
   const t = ui.wodTab;
   let body = '';
   if (t === 'formats') body = framesHtml();
-  else { const list = t === 'named' ? [...state.named, ...NAMED] : state.mine;
-    body = (t === 'mine' ? '<button class="btn out small" data-action="new-wod">+ 내 와드 만들기</button>' : '<button class="btn out small" data-action="new-wod" data-kind="named">+ 네임드 와드 추가</button>') + (list.map(w => { const b = bestWod(w.id);
+  else { const list = t === 'named' ? [...ownNamed(), ...allNamed().filter(w => !w.own)] : state.mine;
+    body = (t === 'mine' ? '<button class="btn out small" data-action="new-wod">+ 내 WOD 만들기</button>' : '<button class="btn out small" data-action="new-wod" data-kind="named">+ 네임드 WOD 추가</button>') + (list.map(w => { const b = bestWod(w.id);
       return `<button class="card" data-action="wod-detail" data-id="${w.id}" style="border:0;text-align:left;color:var(--ink);display:flex;flex-direction:column;gap:6px;width:100%">
-        <div class="row between"><span class="n" style="font-size:38px;text-transform:uppercase">${esc(w.name)}</span><span class="row" style="gap:6px">${w.own ? '<span class="pill">직접 추가</span>' : ''}<span class="pill lime">${esc(w.parts[0]?.fmt.label.toUpperCase() || '')}</span></span></div>
+        <div class="row between"><span class="n" style="font-size:38px;text-transform:uppercase">${esc(w.name)}</span><span class="row" style="gap:6px">${w.own ? '<span class="pill">직접 추가</span>' : w.edited ? '<span class="pill">수정함</span>' : ''}<span class="pill lime">${esc(w.parts[0]?.fmt.label.toUpperCase() || '')}</span></span></div>
         <div class="sub">${esc(tplSummary(w))}</div>
-        ${b ? `<div class="row" style="gap:8px"><span class="eb">내 최고</span><span class="n" style="font-size:24px;color:var(--lime)">${esc(b.txt)}</span></div>` : ''}</button>`; }).join('') || '<div class="empty">저장한 와드가 없어요.</div>'); }
-  return `<div class="row between"><span class="eb">와드</span><span class="pill">${allNamed().length + state.mine.length}개</span></div>
-  <h1 class="disp" style="font-size:64px">와드</h1>
-  <button class="hero" data-action="record-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:26px;display:block">오늘의 와드 바로 기록</span><span class="sub" style="display:block;margin-top:4px">구성 고르고, 운동 고르고, 결과만 적어요</span></button>
-  <div class="row" style="gap:6px">${[['named','네임드'],['mine','내 와드'],['formats','구성']].map(([k, l]) => `<button class="pill" aria-pressed="${t === k}" data-action="wod-tab" data-v="${k}">${l}</button>`).join('')}</div>
+        ${b ? `<div class="row" style="gap:8px"><span class="eb">내 최고</span><span class="n" style="font-size:24px;color:var(--lime)">${esc(b.txt)}</span></div>` : ''}</button>`; }).join('') || '<div class="empty">저장한 WOD가 없어요.</div>'); }
+  return `<div class="row between"><span class="eb">WOD</span><span class="pill">${allNamed().length + state.mine.length}개</span></div>
+  <h1 class="disp" style="font-size:64px">WOD</h1>
+  <button class="hero" data-action="record-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:26px;display:block">Daily WOD 바로 기록</span><span class="sub" style="display:block;margin-top:4px">구성 고르고, 운동 고르고, 결과만 적어요</span></button>
+  <div class="row" style="gap:6px">${[['mine','내 WOD'],['named','네임드'],['formats','구성']].map(([k, l]) => `<button class="pill" aria-pressed="${t === k}" data-action="wod-tab" data-v="${k}">${l}</button>`).join('')}</div>
   ${body}`;
 }
 
@@ -823,8 +840,8 @@ function hits(id, name) {
   const out = [], q = norm(name);
   for (const s of [...state.sessions].sort((a, b) => b.date.localeCompare(a.date))) for (const it of s.items) {
     if (it.type === 'ex') { const ex = exById(it.exId);
-      if ((id && it.exId === id) || (!id && q && ex && norm(ex.name).includes(q))) out.push({s, kind:'ex', head:ex?.name || '', detail:setsText(it, ex || {unit:'km'}) + (it.fields.includes('w') ? ' ' + wuOf(it) : '')}); }
-    else { const ms = it.parts.flatMap(p => p.moves.filter(m => id ? (m.exId === id || (!m.exId && q && norm(m.n).includes(q))) : (q && norm(m.n).includes(q))).map(m => ({...m, q:m.q || schemeOfP(p)})));
+      if ((id && it.exId === id) || (!id && q && ex && exMatch(ex, q))) out.push({s, kind:'ex', head:ex?.name || '', detail:setsText(it, ex || {unit:'km'}) + (it.fields.includes('w') ? ' ' + wuOf(it) : '')}); }
+    else { const ms = it.parts.flatMap(p => p.moves.filter(m => id ? (m.exId === id || (!m.exId && q && norm(m.n).includes(q))) : (q && (norm(m.n).includes(q) || (m.exId && exById(m.exId) && exMatch(exById(m.exId), q))))).map(m => ({...m, q:m.q || schemeOfP(p)})));
       if (ms.length) out.push({s, kind:'wod', head:`${it.name}${wodResult(it) ? ' · ' + wodResult(it) : ''}`, detail:ms.map(m => [qTxt(m.q), m.n, m.w].filter(Boolean).join(' ')).join(', ')}); }
   }
   return out;
@@ -841,7 +858,7 @@ function sheetExHistory(id) {
 
 /* library */
 function libList() {
-  const q = ui.libQ.trim(), list = state.exercises.filter(e => (ui.libCat === 'all' || e.cat === ui.libCat) && (!q || e.name.includes(q)));
+  const q = ui.libQ.trim(), list = state.exercises.filter(e => (ui.libCat === 'all' || e.cat === ui.libCat) && (!q || exMatch(e, norm(q))));
   return exCats().map(c => ({c, items:list.filter(e => e.cat === c.k)})).filter(g => g.items.length).map(g => `<div><div class="row" style="gap:8px;margin-bottom:6px"><span class="bar" style="background:${g.c.color};height:14px"></span><span class="eb">${g.c.label} · ${g.items.length}</span></div>
     <div class="card list" style="padding:4px 16px">${g.items.map(e => `<button class="it" data-action="ex-history" data-id="${e.id}"><span class="grow"><span class="t" style="display:block">${esc(e.name)}</span><span class="meta" style="display:block">${e.fields.map(k => FIELDS[k].label + (k === 'd' ? `(${e.unit})` : '')).join(' · ')}</span></span><span class="sub">기록 ${hits(e.id, e.name).length}</span></button>`).join('')}</div></div>`).join('') + (q ? recordSearch(q) : '') || '<div class="empty">찾는 운동이 없어요.</div>';
 }
@@ -886,7 +903,7 @@ function viewStats() {
     <div class="sub" style="font-size:12px">앱을 지우거나 브라우저 데이터를 지우면 기록도 사라져요. 가끔 백업 파일을 저장해 두세요.</div>
     <div class="row" style="gap:8px"><button class="btn out small" data-action="export">백업 저장</button><label class="btn out small" style="cursor:pointer">백업 불러오기<input type="file" id="importFile" accept=".json,application/json" hidden></label></div>
     <button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="reset">${ui.confirm === 'reset' ? '한 번 더 누르면 지금 기록 대신 예시 데이터가 들어가요' : '예시 데이터 넣어 보기'}</button>
-    <button class="btn danger small" data-action="wipe">${ui.confirm === 'wipe' ? '한 번 더 누르면 기록·계획·와드를 모두 지워요' : '모든 기록 지우기'}</button></div>`;
+    <button class="btn danger small" data-action="wipe">${ui.confirm === 'wipe' ? '한 번 더 누르면 기록·계획·WOD를 모두 지워요' : '모든 기록 지우기'}</button></div>`;
 }
 function chartSvg(pts) {
   const W = 340, H = 170, L = 30, R = 40, T = 12, B = 22, vs = pts.map(p => p.v);
@@ -934,17 +951,17 @@ function sheetPlanDetail(id, ds) {
 }
 function pickList() {
   const q = ui.pickQ.trim().toLowerCase(), c = ui.pickCat;
-  const exs = c === 'wod' ? [] : state.exercises.filter(e => (c === 'all' || e.cat === c) && (!q || e.name.toLowerCase().includes(q)));
-  const wods = c === 'all' || c === 'wod' ? [['내 와드', state.mine], ['네임드 와드', allNamed()]].map(([t, l]) => [t, l.filter(w => !q || w.name.toLowerCase().includes(q))]).filter(([, l]) => l.length) : [];
+  const exs = c === 'wod' ? [] : state.exercises.filter(e => (c === 'all' || e.cat === c) && (!q || exMatch(e, norm(q))));
+  const wods = c === 'all' || c === 'wod' ? [['내 WOD', state.mine], ['네임드 WOD', allNamed()]].map(([t, l]) => [t, l.filter(w => !q || w.name.toLowerCase().includes(q))]).filter(([, l]) => l.length) : [];
   const exHtml = exs.length ? `${wods.length ? '<div class="eb">운동</div>' : ''}<div class="card list" style="padding:2px 16px">${exs.map(e => `<button class="it" data-action="add-ex" data-id="${e.id}"><span class="bar" style="background:${catOf(e.cat).color};height:18px"></span><span class="grow t">${esc(e.name)}</span><span class="pill">추가</span></button>`).join('')}</div>` : '';
   const wodHtml = wods.map(([t, l]) => `<div class="eb">${t}</div><div class="card list" style="padding:2px 16px">${l.map(w => `<button class="it" data-action="add-wod" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:18px"></span><span class="grow"><span class="t" style="display:block">${esc(w.name)}</span><span class="meta" style="display:block">${esc(tplSummary(w))}</span></span><span class="pill">추가</span></button>`).join('')}</div>`).join('');
   return exHtml + wodHtml || '<div class="empty">찾는 운동이 없어요. 위의 + 새 운동으로 만들 수 있어요.</div>';
 }
 function sheetPickEx() {
   ui.sheet = sheetPickEx;
-  openSheet(`<div class="row between"><h2 class="disp" style="font-size:30px">운동 · 와드 추가</h2><button class="pill lime" data-action="edit-ex" data-from="pick">+ 새 운동</button></div>
-    <button class="hero" data-action="add-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:24px;display:block">오늘의 와드 바로 적기</span><span class="sub" style="display:block;margin-top:4px">저장 없이 그날 와드 내용과 결과만 적어요</span></button>
-    <input class="search" id="pickQ" type="search" placeholder="운동이나 와드 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
+  openSheet(`<div class="row between"><h2 class="disp" style="font-size:30px">운동 · WOD 추가</h2><button class="pill lime" data-action="edit-ex" data-from="pick">+ 새 운동</button></div>
+    <button class="hero" data-action="add-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:24px;display:block">Daily WOD 바로 적기</span><span class="sub" style="display:block;margin-top:4px">저장 없이 그날 WOD 내용과 결과만 적어요</span></button>
+    <input class="search" id="pickQ" type="search" placeholder="운동이나 WOD 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
     <div class="chips">${[{k:'all', label:'전체'}, ...cats()].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
     <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`);
 }
@@ -957,8 +974,8 @@ function sheetWod(id) {
     ${w.parts.map((p, pi) => `${multi || pList(p).length ? `<div class="eb" style="color:var(--lime)">${multi ? String.fromCharCode(65 + pi) + ' · ' : ''}${esc([p.fmt.label, patsLabel(p)].filter(Boolean).join(' · '))}</div>` : ''}<div class="moves">${p.moves.map(m => `<div><b>${esc(qTxt(m.q) || schemeOfP(p))}</b><span>${esc([m.n, m.w].filter(Boolean).join(' '))}</span></div>`).join('')}</div>`).join('')}
     ${w.note ? `<div class="sub">${esc(w.note)}</div>` : ''}${state.formats.find(f => f.id === w.parts[0]?.fmt.id)?.note ? `<div class="card sub" style="color:var(--ink)">${esc(state.formats.find(f => f.id === w.parts[0].fmt.id).note)}</div>` : ''}
     ${hist.length ? `<div class="card list" style="padding:2px 16px">${hist.slice(0, 5).map(({s, it}) => `<button class="it" data-action="open-day" data-date="${s.date}"><span class="n" style="font-size:26px;width:110px">${esc(wodResult(it) || '-')}</span><span class="grow sub">${s.date.replaceAll('-', '.')} · ${esc(it.scale || 'Rx')}</span></button>`).join('')}</div>` : ''}
-    <button class="btn lime" data-action="record-wod" data-id="${w.id}">이 와드로 기록하기</button>
-    ${w.named && !w.own ? `<button class="btn out small" data-action="copy-wod" data-id="${w.id}">복사해서 내 와드로 수정</button>` : `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="${w.own ? 'named' : ''}">수정</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>`}`);
+    <button class="btn lime" data-action="record-wod" data-id="${w.id}">이 WOD로 기록하기</button>
+    ${w.named && !w.own ? `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="named">수정</button><button class="btn out small" data-action="copy-wod" data-id="${w.id}">내 WOD로 복사</button></div>${w.edited ? `<button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="named-reset" data-id="${w.id}">${ui.confirm === 'named-reset' ? '한 번 더 누르면 처음 내용으로 돌아가요' : '처음 내용으로 되돌리기'}</button>` : ''}` : `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="${w.own ? 'named' : ''}">수정</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>`}`);
 }
 /* frame sheet: insert a frame between exercises, or change one part's frame */
 function sheetFrame() {
@@ -1042,16 +1059,16 @@ function openTpl(src, kind = 'mine') {
   ui.tplBack = ui.page; ui.tdraft = {id:src?.id || null, kind, note:src?.note || '', items:[it]}; ui.page = 'tpl'; ui.confirm = null; closeSheet(); render();
 }
 /* a saved WOD keeps frames and exercises, not results */
-function tplFromItem(it) { return {id:it.wodId || null, name:(it.name || '').trim() || '오늘의 와드', note:'', parts:it.parts.map(p => ({fmt:{...p.fmt}, pats:pList(p).map(x => ({...x})), moves:p.moves.filter(m => m.n.trim()).map(m => ({n:m.n.trim(), exId:m.exId || null, q:(m.q || '').trim(), w:(m.w || '').trim()}))})).filter(p => p.moves.length)}; }
+function tplFromItem(it) { return {id:it.wodId || null, name:(it.name || '').trim() || 'Daily WOD', note:'', parts:it.parts.map(p => ({fmt:{...p.fmt}, pats:pList(p).map(x => ({...x})), moves:p.moves.filter(m => m.n.trim()).map(m => ({n:m.n.trim(), exId:m.exId || null, q:(m.q || '').trim(), w:(m.w || '').trim()}))})).filter(p => p.moves.length)}; }
 /* drop empty rows; link every exercise name to the exercise list, adding new ones so they show up in search */
 const withUnit = w => { w = String(w || '').trim(); return /^[\d.]+(\/[\d.]+)?$/.test(w) ? w + U() : w; };
 function cleanWod(it, onNew) {
   const parts = it.parts.map(p => ({...p, moves:p.moves.filter(m => m.n.trim()).map(m => {
     let ex = (m.exId && exById(m.exId)?.name === m.n.trim() && exById(m.exId)) || findEx(m.n);
-    if (!ex) { ex = {id:uid(), name:m.n.trim(), cat:m.w ? 'weight' : 'body', fields:m.w ? ['w','r'] : ['r'], unit:'km'}; state.exercises.push(ex); onNew(); }
+    if (!ex) { ex = {id:uid(), name:m.n.trim(), cat:[m.w ? 'weight' : 'body', 'etc'].find(k => state.cats.some(c => c.k === k)) || state.cats[0].k, fields:m.w ? ['w','r'] : ['r'], unit:'km'}; state.exercises.push(ex); onNew(); }
     return {n:ex.name, exId:ex.id, q:(m.q || '').trim(), w:withUnit(m.w)}; })})).filter(p => p.moves.length || p.res?.v || p.res?.status);
   if (!parts.length && !wodResult(it)) return null;
-  return {...it, name:(it.name || '').trim() || '오늘의 와드', parts:parts.length ? parts : [{...it.parts[0], moves:[]}]};
+  return {...it, name:(it.name || '').trim() || 'Daily WOD', parts:parts.length ? parts : [{...it.parts[0], moves:[]}]};
 }
 function delFrame(kind, id) {
   if (kind === 'fmt') { if (state.formats.length < 2) { toast('방식은 하나 이상 있어야 해요'); return; } state.formats = state.formats.filter(f => f.id !== id); }
@@ -1133,9 +1150,9 @@ const A = {
   'part-done': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.res = {...p.res, status:p.res?.status === 'DONE' ? '' : 'DONE'}; render(true); },
   'res-status': el => { const it = curItems()[+el.dataset.i]; it.res = {...(it.res || {}), status:el.dataset.v}; if (!el.dataset.v) delete it.res.short; render(true); },
   'dw-save': el => { const it = ui.draft.items[+el.dataset.i], t = tplFromItem(it);
-    if (!wodMoves(t).length) { toast('와드에 운동을 먼저 적어 주세요'); return; }
-    t.id = uid(); if (!it.name.trim() || it.name.trim() === '오늘의 와드' || it.wodId) t.name = it.wodId ? `${t.name} (내 버전)` : `${md(ui.draft.date)} 와드`;
-    state.mine.unshift(t); save(); it.wodId = t.id; it.name = t.name; render(true); toast('내 와드에 저장했어요'); },
+    if (!wodMoves(t).length) { toast('WOD에 운동을 먼저 적어 주세요'); return; }
+    t.id = uid(); if (!it.name.trim() || it.name.trim() === 'Daily WOD' || it.wodId) t.name = it.wodId ? `${t.name} (내 버전)` : `${md(ui.draft.date)} WOD`;
+    state.mine.unshift(t); save(); it.wodId = t.id; it.name = t.name; render(true); toast('내 WOD에 저장했어요'); },
   // group exercises into a WOD
   'group-start': () => { ui.grouping = true; ui.groupSel = []; render(true); },
   'group-cancel': () => { ui.grouping = false; ui.groupSel = []; render(true); },
@@ -1146,9 +1163,9 @@ const A = {
       return {n:ex.name, exId:it.exId, q:s0.r ? String(s0.r) : s0.d ? `${s0.d}${ex.unit}` : s0.t || '', w:s0.w ? `${s0.w}${wuOf(it)}` : ''}; });
     const w = {...dailyItem(), parts:[{fmt:fmtCopy(state.formats[0] || DEF_FORMATS[0]), pats:[], res:{}, moves}]};
     items.splice(sel[0], 1, w); for (const i of sel.slice(1).reverse()) items.splice(i, 1);
-    ui.grouping = false; ui.groupSel = []; render(true); toast('와드로 묶었어요. 구성과 결과를 적어 주세요'); },
-  'add-wod': el => { ui.draft.items.push(wodItem(wodById(el.dataset.id))); if (!ui.draft.title) ui.draft.title = `와드 · ${wodById(el.dataset.id).name}`; closeSheet(); render(true); },
-  'record-wod': el => { const w = wodById(el.dataset.id); if (ui.page === 'edit') { ui.draft.items.push(wodItem(w)); closeSheet(); return render(true); } const d = newDraft(recordDate()); d.items.push(wodItem(w)); d.title = `와드 · ${w.name}`; openEditor(d); },
+    ui.grouping = false; ui.groupSel = []; render(true); toast('WOD로 묶었어요. 구성과 결과를 적어 주세요'); },
+  'add-wod': el => { ui.draft.items.push(wodItem(wodById(el.dataset.id))); if (!ui.draft.title) ui.draft.title = `WOD · ${wodById(el.dataset.id).name}`; closeSheet(); render(true); },
+  'record-wod': el => { const w = wodById(el.dataset.id); if (ui.page === 'edit') { ui.draft.items.push(wodItem(w)); closeSheet(); return render(true); } const d = newDraft(recordDate()); d.items.push(wodItem(w)); d.title = `WOD · ${w.name}`; openEditor(d); },
   'remove-item': el => { ui.draft.items.splice(+el.dataset.i, 1); render(true); },
   'move-item': el => { const i = +el.dataset.i; if (i > 0) { const a = ui.draft.items; [a[i-1], a[i]] = [a[i], a[i-1]]; render(true); } },
   field: el => { const it = ui.draft.items[+el.dataset.i], f = el.dataset.f; it.fields = it.fields.includes(f) ? it.fields.filter(x => x !== f) : ['w','r','t','d'].filter(x => x === f || it.fields.includes(x)); render(true); },
@@ -1179,17 +1196,19 @@ const A = {
   'guide-next': () => { const tr = $('#gtrack'), i = Math.round(tr.scrollLeft / tr.clientWidth); if (i >= GUIDE.length - 1) return closeGuide(); tr.scrollTo({left:(i + 1) * tr.clientWidth, behavior:'smooth'}); },
   'wod-tab': el => { ui.wodTab = el.dataset.v; render(true); },
   'wod-detail': el => { ui.confirm = null; sheetWod(el.dataset.id); },
-  'new-wod': el => { const kind = el.dataset.kind === 'named' ? 'named' : 'mine', src = el.dataset.id ? state[kind].find(w => w.id === el.dataset.id) : null; openTpl(src ? {id:src.id, name:src.name, note:src.note || '', parts:src.parts} : null, kind); },
+  'new-wod': el => { const kind = el.dataset.kind === 'named' ? 'named' : 'mine', src = el.dataset.id ? (kind === 'named' ? wodById(el.dataset.id) : state.mine.find(w => w.id === el.dataset.id)) : null; openTpl(src ? {id:src.id, name:src.name, note:src.note || '', parts:src.parts} : null, kind); },
   'copy-wod': el => { const w = wodById(el.dataset.id); openTpl({id:null, name:`${w.name} (내 버전)`, note:w.note || '', parts:w.parts}); },
   'tpl-cancel': () => { ui.page = ui.tplBack || null; ui.frEdit = false; render(); },
   'tpl-save': () => { const d = ui.tdraft, it = d.items[0];
-    if (!it.name.trim()) { toast('와드 이름을 적어 주세요'); return; }
+    if (!it.name.trim()) { toast('WOD 이름을 적어 주세요'); return; }
     if (!wodMoves(it).some(m => m.n.trim())) { toast('운동을 하나 이상 적어 주세요'); return; }
     const t = tplFromItem(cleanWod(it, () => {})); t.note = (d.note || '').trim();
-    const named = d.kind === 'named', list = named ? state.named : state.mine; if (named) { t.named = true; t.own = true; }
-    if (d.id) { t.id = d.id; const i = list.findIndex(w => w.id === d.id); list[i] = t; } else { t.id = uid(); list.unshift(t); }
-    save(); ui.page = ui.tplBack || null; ui.frEdit = false; ui.wodTab = named ? 'named' : 'mine'; render(); toast(named ? '네임드 와드에 추가했어요' : '내 와드에 저장했어요'); },
-  'del-wod': el => { if (ui.confirm !== 'del-wod') { ui.confirm = 'del-wod'; return refreshSheet(); } state.mine = state.mine.filter(w => w.id !== el.dataset.id); state.named = state.named.filter(w => w.id !== el.dataset.id); save(); ui.confirm = null; closeSheet(); render(true); toast('와드를 삭제했어요'); },
+    const named = d.kind === 'named', list = named ? state.named : state.mine, builtIn = named && NAMED.some(w => w.id === d.id);
+    if (named) { t.named = true; if (builtIn) t.edited = true; else t.own = true; }
+    if (d.id) { t.id = d.id; const i = list.findIndex(w => w.id === d.id); if (i >= 0) list[i] = t; else list.push(t); } else { t.id = uid(); list.unshift(t); }
+    save(); ui.page = ui.tplBack || null; ui.frEdit = false; ui.wodTab = named ? 'named' : 'mine'; render(); toast(named ? '네임드 WOD에 추가했어요' : '내 WOD에 저장했어요'); },
+  'named-reset': el => { if (ui.confirm !== 'named-reset') { ui.confirm = 'named-reset'; return refreshSheet(); } state.named = state.named.filter(w => w.id !== el.dataset.id); save(); ui.confirm = null; closeSheet(); render(true); toast('처음 내용으로 되돌렸어요'); },
+  'del-wod': el => { if (ui.confirm !== 'del-wod') { ui.confirm = 'del-wod'; return refreshSheet(); } state.mine = state.mine.filter(w => w.id !== el.dataset.id); state.named = state.named.filter(w => w.id !== el.dataset.id); save(); ui.confirm = null; closeSheet(); render(true); toast('WOD를 삭제했어요'); },
   // frame chips
   'fr-toggle': () => { ui.frEdit = !ui.frEdit; render(true); },
   'frames-open': () => sheetFrames(),
@@ -1285,7 +1304,7 @@ document.addEventListener('click', e => {
     lastTap = {ds, t:now}; ui.sel = ds; if (!ds.startsWith(ui.month)) ui.month = ds.slice(0, 7); render(true); return; }
   const el = e.target.closest('[data-action]'); if (!el) return;
   const a = el.dataset.action;
-  if (ui.confirm && !['del-session','cancel-edit','del-plan','del-wod','del-ex','reset','wipe','fe-del','fr-reset','cat-del'].includes(a)) ui.confirm = null;
+  if (ui.confirm && !['del-session','cancel-edit','del-plan','del-wod','del-ex','reset','wipe','fe-del','fr-reset','cat-del','named-reset'].includes(a)) ui.confirm = null;
   A[a]?.(el);
 });
 document.addEventListener('input', e => {
@@ -1323,8 +1342,8 @@ document.addEventListener('change', e => { const ds = e.target.dataset; if (ds.m
 function showSug(input, ds) {
   const box = $(`#sug-${ds.i}-${ds.pi}-${ds.mv}`); if (!box) return;
   const q = norm(input.value); if (!q) { box.innerHTML = ''; return; }
-  const u = usage(), list = state.exercises.filter(e => norm(e.name).includes(q)).sort((a, b) => (u[b.id] || 0) - (u[a.id] || 0)).slice(0, 5);
-  const exact = list.some(e => norm(e.name) === q);
+  const u = usage(), list = state.exercises.filter(e => exMatch(e, q)).sort((a, b) => (u[b.id] || 0) - (u[a.id] || 0)).slice(0, 5);
+  const exact = list.some(e => exIs(e, q));
   box.innerHTML = list.map(e => `<button data-action="mv-pick" data-i="${ds.i}" data-pi="${ds.pi}" data-j="${ds.mv}" data-id="${e.id}"><b>${esc(e.name)}</b><small>${u[e.id] ? `${u[e.id]}번` : ''}</small></button>`).join('')
     + (exact ? '' : `<button data-action="mv-new" data-i="${ds.i}" data-pi="${ds.pi}" data-j="${ds.mv}" style="color:var(--lime)">+ "${esc(input.value.trim())}" 새 운동으로</button>`);
 }
