@@ -199,9 +199,16 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .sug button{display:flex;justify-content:space-between;background:none;border:0;border-top:1px solid #2a2a2a;padding:11px 14px;font-size:15px;color:var(--ink);text-align:left}
 .sug button:first-child{border-top:0}
 .sug small{color:var(--mut);font-size:12px}
-.ins{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:12px;background:none;border:0;padding:0;width:100%}
-.ins::before,.ins::after{content:"";flex:1;border-top:1px dashed #3a3a3a}
-.ins b{color:var(--lime);border:1px dashed var(--lime);border-radius:99px;padding:3px 10px}
+.ins{display:flex;align-items:center;gap:6px;color:#6f6f6f;font-size:11px;background:none;border:0;padding:0;width:100%;height:14px;margin:-2px 0}
+.ins::before,.ins::after{content:"";flex:1;border-top:1px dashed #2a2a2a}
+.ins b{font-weight:600}
+/* reorder mode: rows become a compact list with up/down */
+.mvo{display:flex;align-items:center;gap:8px;background:#000;border:1px solid #2c2c2c;border-radius:12px;padding:6px 6px 6px 12px;min-height:44px}
+.mvo .q{font-family:var(--num);font-weight:700;color:var(--lime);min-width:36px}
+.mvo .t{flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mvo .w{color:var(--mut);font-size:13px}
+.mvo .icon{width:34px;height:34px;border:1px solid #333;border-radius:10px}
+.mvo .icon:disabled{opacity:.25}
 .addex{border:1px dashed #3a3a3a;border-radius:12px;padding:10px;color:var(--mut);font-size:15px;background:none;text-align:left}
 .note{font-size:12px;color:var(--lime);text-align:center}
 .secres{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#262f0a;border-radius:10px;padding:6px 8px 6px 12px;font-size:13px;color:var(--lime);font-weight:700}
@@ -738,11 +745,13 @@ function partHtml(it, i, p, pi) {
   const head = multi
     ? `<div class="fdiv"><span class="t">${String.fromCharCode(65 + pi)}</span><button class="c2 on" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(p.fmt.label || '방식 없음')}</button>${pList(p).map(x => `<button class="c2 val" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(patLabel(x))}</button>`).join('')}<span class="grow"></span><button class="icon" data-action="part-del" data-i="${i}" data-pi="${pi}" aria-label="${String.fromCharCode(65 + pi)} 구간 없애기">✕</button></div>`
     : `<div class="frame"><div class="row between"><span class="lbl">구성</span><button class="pill ${ui.frEdit ? 'lime' : ''}" style="font-size:12px;padding:3px 10px" data-action="fr-toggle">${ui.frEdit ? '완료' : '편집'}</button></div><span class="lbl" style="font-weight:500">방식</span>${fmtChips(i, pi, p)}<span class="lbl" style="font-weight:500">패턴</span>${patChips(i, pi, p)}${ui.frEdit ? '<div class="sub" style="font-size:12px">칩을 누르면 수정, ✕는 삭제예요. 칩을 꾹 누르면 순서도 바꿀 수 있어요.</div>' : ''}</div>`;
-  const rows = p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(m.w)}" placeholder="${U()}" aria-label="${j+1}번 무게"><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
-      <div class="sug" id="sug-${i}-${pi}-${j}"></div>${j < p.moves.length - 1 ? `<button class="ins" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${j + 1}"><b>+ 여기서 구간 나누기</b></button>` : ''}`).join('');
+  const ord = ui.mvOrder === i, first = pi === 0, last = pi === it.parts.length - 1;
+  const rows = ord ? p.moves.map((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || scheme || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && j === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && j === p.moves.length - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`).join('')
+    : p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(m.w)}" placeholder="${U()}" aria-label="${j+1}번 무게"><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
+      <div class="sug" id="sug-${i}-${pi}-${j}"></div>${j < p.moves.length - 1 ? `<button class="ins" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${j + 1}" aria-label="여기서 구간 나누기"><b>구간 나누기</b></button>` : ''}`).join('');
   const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${p.fmt.res === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, p.fmt.res)}</div>` : '';
-  return `<div class="part">${head}<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>${rows}
-    <div class="row" style="gap:6px"><button class="addex grow" data-action="mv-add" data-i="${i}" data-pi="${pi}">+ 운동</button><button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${p.moves.length}">+ 구간 추가</button></div>
+  return `<div class="part">${head}${ord ? '' : '<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>'}${rows}
+    ${ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-add" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && wodMoves(it).length > 1 ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${p.moves.length}">+ 구간 추가</button></div>`}
     ${scheme && !multi ? `<div class="note">횟수는 구성(${esc(scheme)})에서 자동으로 채워져요</div>` : ''}${pres}</div>`;
 }
 /* live preview of what is being recorded, shown in the result box and redrawn on every keystroke */
@@ -1050,13 +1059,14 @@ function sheetExEditor() {
 /* ---------- actions ---------- */
 let toastT;
 function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 1800); }
-function openEditor(draft) { ui.draft = draft; ui.page = 'edit'; ui.confirm = null; closeSheet(); render(); }
+function openEditor(draft) { ui.mvOrder = null; ui.draft = draft; ui.page = 'edit'; ui.confirm = null; closeSheet(); render(); }
 function openDay(ds) { ui.dayDate = ds; ui.page = 'day'; ui.confirm = null; closeSheet(); render(); }
 function openPlan(p) { ui.pdraft = p; ui.page = 'plan'; ui.confirm = null; closeSheet(); render(); }
 const recordDate = () => ui.sel > TODAY() ? TODAY() : ui.sel;
 function newPlanDraft(ds) { const d = ds && ds >= TODAY() ? ds : TODAY(); return {id:null, title:'', cat:'weight', repeat:'weekly', days:[parseYmd(d).getDay()], start:d, end:'', exIds:[], wodId:'', notify:true, skip:[]}; }
 
 function openTpl(src, kind = 'mine') {
+  ui.mvOrder = null;
   const it = src ? wodItem({id:null, name:src.name, parts:src.parts}) : {...dailyItem(), name:''};
   it.parts.forEach(p => p.moves.forEach(m => delete m.rx));
   ui.tplBack = ui.page; ui.tdraft = {id:src?.id || null, kind, note:src?.note || '', items:[it]}; ui.page = 'tpl'; ui.confirm = null; closeSheet(); render();
@@ -1129,6 +1139,12 @@ const A = {
     render(true); if (t && k < 0) document.querySelector(`[data-patv="${el.dataset.pi}"][data-pk="${p.pats.length - 1}"][data-i="${el.dataset.i}"]`)?.focus(); },
   'set-patv': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; pList(p)[+el.dataset.pk].v = el.dataset.v; render(true); },
   'mv-add': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.moves.push(blankMove()); render(true); const r = document.querySelectorAll(`[data-i="${el.dataset.i}"][data-pi="${el.dataset.pi}"][data-k="n"]`); r[r.length - 1]?.focus(); },
+  'mv-order': el => { ui.mvOrder = ui.mvOrder === +el.dataset.i ? null : +el.dataset.i; render(true); },
+  /* move one exercise up or down; past the edge of a section it moves into the next section */
+  'mv-move': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi, j = +el.dataset.j, d = +el.dataset.d, p = it.parts[pi], m = p.moves[j];
+    if (j + d >= 0 && j + d < p.moves.length) { p.moves.splice(j, 1); p.moves.splice(j + d, 0, m); }
+    else { const q = it.parts[pi + d]; if (!q) return; p.moves.splice(j, 1); if (d < 0) q.moves.push(m); else q.moves.unshift(m); if (!p.moves.length) p.moves.push(blankMove()); }
+    render(true); },
   'mv-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.moves.splice(+el.dataset.j, 1); if (!p.moves.length) p.moves.push(blankMove()); render(true); },
   'mv-pick': el => { const m = curItems()[+el.dataset.i].parts[+el.dataset.pi].moves[+el.dataset.j], ex = exById(el.dataset.id); if (ex) { m.n = ex.name; m.exId = ex.id; } render(true); },
   'mv-new': el => { const box = $(`#sug-${el.dataset.i}-${el.dataset.pi}-${el.dataset.j}`); if (box) box.innerHTML = ''; toast('저장하면 새 운동으로 추가돼요'); },
