@@ -146,6 +146,10 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .cat-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:15px}
 .cat-row:first-child{border-top:0}
 .cat-row input{width:20px;height:20px;accent-color:var(--lime)}
+/* kg / lb switch */
+.unitsw{display:inline-flex;border:1px solid #333;border-radius:99px;padding:2px}
+.unitsw button{background:none;border:0;border-radius:99px;padding:4px 12px;font-size:13px;font-weight:700;color:var(--mut)}
+.unitsw button[aria-pressed="true"]{background:var(--lime);color:#000}
 /* pattern number field: "Team of [3]" */
 .patv{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--lime)}
 .patv input{width:110px;background:#000;border:1px solid var(--lime);border-radius:10px;padding:7px 10px;font-family:var(--num);font-weight:800;font-size:20px;color:var(--ink)}
@@ -234,6 +238,11 @@ const mondayOf = d => { const x = new Date(d); x.setHours(0,0,0,0); return addDa
 const secToMs = s => { s = Math.round(s); return `${Math.floor(s/60)}:${pad(s%60)}`; };
 const msToSec = t => { if (!t) return NaN; const p = String(t).split(':').map(Number); return p.length === 2 ? p[0]*60+p[1] : p[0]*60; };
 const round25 = x => Math.round(x/2.5)*2.5;
+/* weights are kept in the unit they were typed in; charts and 1RM convert to the chosen unit */
+const LB = 2.20462;
+const U = () => state.unit || 'kg';
+const wuOf = it => it.wu || 'kg';
+const conv = (v, from, to) => from === to ? v : to === 'lb' ? v * LB : v / LB;
 const e1rm = (w, r) => (w > 0 && r > 0) ? w * (1 + r/30) : 0;
 const md = ds => { const d = parseYmd(ds); return `${pad(d.getMonth()+1)}.${pad(d.getDate())}`; };
 const dayLabel = ds => { const d = parseYmd(ds); return `${d.getMonth()+1}월 ${d.getDate()}일 ${WD[d.getDay()]}요일`; };
@@ -418,14 +427,14 @@ function entriesOn(ds) {
 /* ---------- derived ---------- */
 function bestSet(it) {
   let best = null;
-  for (const s of it.sets) if (it.fields.includes('w') && s.w) { const v = e1rm(+s.w, +s.r || 1); if (!best || v > best.v) best = {v, w:s.w, r:s.r || 1}; }
+  for (const s of it.sets) if (it.fields.includes('w') && s.w) { const v = conv(e1rm(+s.w, +s.r || 1), wuOf(it), U()); if (!best || v > best.v) best = {v, w:s.w, r:s.r || 1, u:wuOf(it)}; }
   return best;
 }
 function itemText(it) {
   if (it.type === 'wod') return `${it.name} ${wodResult(it)}`.trim();
   const ex = exById(it.exId) || {name:'삭제된 운동', unit:'km'};
   const b = bestSet(it);
-  if (b) return `${ex.name} ${b.w}×${b.r}`;
+  if (b) return `${ex.name} ${b.w}${b.u === 'lb' ? 'lb' : ''}×${b.r}`;
   const s = it.sets[0] || {};
   if (s.d) return `${ex.name} ${s.d}${ex.unit}${s.t ? ' ' + s.t : ''}`;
   if (it.fields.includes('r')) return `${ex.name} ${it.sets.length}세트`;
@@ -438,7 +447,7 @@ function fmtRes(v, type) {
   v = String(v || '').trim(); if (!v) return '';
   if (type === 'rr') { const m = v.match(/^(\d+)\s*[+rR]\s*\+?\s*(\d+)$/); if (m) return `${m[1]}R+${m[2]}`; if (/^\d+$/.test(v)) return `${v}R`; }
   if (type === 'reps' && /^\d+$/.test(v)) return `${v}회`;
-  if (type === 'weight' && /^[\d.]+$/.test(v)) return `${v}kg`;
+  if (type === 'weight' && /^[\d.]+$/.test(v)) return `${v}${U()}`;
   return v;
 }
 function wodResult(it) { const r = it.res || {};
@@ -458,7 +467,7 @@ const wodMoves = it => (it.parts || []).flatMap(p => p.moves);
 const tplSummary = w => [w.parts.map(p => [p.fmt.label, patLabel(p.pat)].filter(Boolean).join(' ')).join(' → '), wodMoves(w).map(m => m.n).filter(Boolean).join(', ')].filter(Boolean).join(' · ');
 function series(exId) {
   const pts = [];
-  for (const s of sorted()) { let b = 0; for (const it of s.items) if (it.type === 'ex' && it.exId === exId) for (const x of it.sets) b = Math.max(b, e1rm(+x.w, +x.r)); if (b) pts.push({date:s.date, v:Math.round(b*10)/10}); }
+  for (const s of sorted()) { let b = 0; for (const it of s.items) if (it.type === 'ex' && it.exId === exId) for (const x of it.sets) b = Math.max(b, conv(e1rm(+x.w, +x.r), wuOf(it), U())); if (b) pts.push({date:s.date, v:Math.round(b*10)/10}); }
   return pts;
 }
 function weekStats() {
@@ -478,7 +487,7 @@ function planKeepRate() {
 function prevSetsFor(exId, beforeDate) {
   for (const s of [...state.sessions].sort((a,b) => b.date.localeCompare(a.date))) {
     if (beforeDate && s.date > beforeDate) continue;
-    const it = s.items.find(i => i.type === 'ex' && i.exId === exId); if (it) return it.sets;
+    const it = s.items.find(i => i.type === 'ex' && i.exId === exId); if (it) return Object.assign(it.sets.map(x => ({...x})), {wu:wuOf(it)});
   }
   return null;
 }
@@ -553,8 +562,8 @@ function pageDay() {
     let heroHtml = '';
     if (hero) { const before = series(hero.exId).filter(p => p.date < ds); const prevBest = before.length ? Math.max(...before.map(p => p.v)) : 0; const pr = hero.v > prevBest;
       heroHtml = `<button class="hero" data-action="stat-ex-go" data-v="${hero.exId}" style="border:0;text-align:left;width:100%"><div class="row between"><span class="eb" style="font-weight:700">${esc(hero.name)} · 예상 1RM</span>${pr ? '<span class="pill" style="border-color:#000;color:#000;font-weight:700">PR</span>' : ''}</div>
-        <div class="row" style="align-items:flex-end;margin-top:4px"><span class="n" style="font-size:92px">${Math.round(hero.v*10)/10}</span><span class="unit" style="color:var(--lime-sub);font-size:20px">KG</span></div>
-        <div class="row between sub"><span>최고 세트 ${hero.w}kg × ${hero.r}</span><span>${prevBest ? `이전 최고 ${Math.round(prevBest*10)/10}kg` : '첫 기록'}</span></div></button>`; }
+        <div class="row" style="align-items:flex-end;margin-top:4px"><span class="n" style="font-size:92px">${Math.round(hero.v*10)/10}</span><span class="unit" style="color:var(--lime-sub);font-size:20px">${U().toUpperCase()}</span></div>
+        <div class="row between sub"><span>최고 세트 ${hero.w}${hero.u} × ${hero.r}</span><span>${prevBest ? `이전 최고 ${Math.round(prevBest*10)/10}${U()}` : '첫 기록'}</span></div></button>`; }
     const wodHero = s.items.filter(i => i.type === 'wod').map(it => { const b = bestWod(it.wodId, s.id), multi = it.parts.length > 1, p0 = it.parts[0];
       return `<div class="hero"><div class="row between"><span class="eb" style="font-weight:700">${esc([it.name, multi ? '' : p0?.fmt.label, multi ? '' : patLabel(p0?.pat)].filter(Boolean).join(' · '))}</span><span class="pill" style="background:#000;color:var(--lime);border-color:#000;font-weight:700">${esc(it.scale || 'Rx')}</span></div>
       <div class="n" style="font-size:100px;margin-top:2px">${esc(wodResult(it) || '-')}</div><div class="sub">${it.wodId ? b ? `이전 최고 ${esc(b.txt)}` : '첫 기록' : ''}${it.partner ? ` · 파트너 ${esc(it.partner)}` : ''}</div>
@@ -563,7 +572,7 @@ function pageDay() {
       <div class="sub" style="margin-top:6px">${[s.duration ? `${s.duration}분` : '', s.place, plan ? `${repeatText(plan)} 계획` : ''].filter(Boolean).map(esc).join(' · ')}</div></div>
       ${heroHtml}${wodHero}
       ${s.items.some(i => i.type === 'ex') ? `<div class="card list">${s.items.filter(i => i.type === 'ex').map((it, n) => { const ex = exById(it.exId) || {name:'삭제된 운동', unit:'km'};
-        return `<div class="it"><span class="n" style="font-size:26px;width:16px;color:var(--mut)">${n+1}</span><span class="grow"><span class="t" style="display:block">${esc(ex.name)}</span><span class="sub">${esc(setsText(it, ex))}${it.fields.includes('w') ? ' kg' : ''}</span></span></div>`; }).join('')}</div>` : ''}
+        return `<div class="it"><span class="n" style="font-size:26px;width:16px;color:var(--mut)">${n+1}</span><span class="grow"><span class="t" style="display:block">${esc(ex.name)}</span><span class="sub">${esc(setsText(it, ex))}${it.fields.includes('w') ? ' ' + wuOf(it) : ''}</span></span></div>`; }).join('')}</div>` : ''}
       ${s.memo ? `<div class="card"><div class="eb" style="margin-bottom:6px">메모</div><div style="line-height:1.6">${esc(s.memo)}</div></div>` : ''}
       <div class="row" style="gap:8px"><button class="btn out small" data-action="edit-session" data-id="${s.id}">수정</button><button class="btn danger small" data-action="del-session" data-id="${s.id}">${ui.confirm === 'del-' + s.id ? '한 번 더 누르면 삭제' : '삭제'}</button></div>`;
   }).join('<div style="height:8px;border-top:1px solid var(--line)"></div>')}</div>`;
@@ -575,7 +584,7 @@ function newDraft(date, plan) {
   if (plan) { for (const id of plan.exIds || []) if (exById(id)) d.items.push(exItem(id, date)); if (plan.wodId && wodById(plan.wodId)) d.items.push(wodItem(wodById(plan.wodId))); }
   return d;
 }
-function exItem(id, date) { const ex = exById(id); const prev = prevSetsFor(id, date); return {type:'ex', id:uid(), exId:id, fields:[...ex.fields], sets:prev ? prev.map(x => ({...x})) : [{}], prefilled:!!prev}; }
+function exItem(id, date) { const ex = exById(id); const prev = prevSetsFor(id, date); return {type:'ex', id:uid(), exId:id, fields:[...ex.fields], wu:prev?.wu || U(), sets:prev ? prev.map(x => ({...x})) : [{}], prefilled:!!prev}; }
 const blankMove = () => ({n:'', exId:null, q:'', w:''});
 function wodItem(w) { return {type:'wod', id:uid(), wodId:w.id, name:w.name, scale:'Rx', res:{}, parts:w.parts.map(p => ({fmt:{...p.fmt}, pat:p.pat ? {...p.pat} : null, res:{}, moves:p.moves.map(m => { const ex = (m.exId && exById(m.exId)) || findEx(m.n); return {n:ex?.name || m.n, exId:ex?.id || null, q:m.q || '', w:m.w || '', rx:m.w || ''}; })}))}; }
 const dailyItem = () => ({type:'wod', id:uid(), wodId:null, name:'', scale:'Rx', res:{}, parts:[{fmt:fmtCopy(state.formats[0] || DEF_FORMATS[0]), pat:null, res:{}, moves:[blankMove(), blankMove()]}]});
@@ -603,11 +612,11 @@ function pageEdit() {
 function exEditCard(it, i) {
   const ex = exById(it.exId) || {name:'삭제된 운동', cat:'etc', unit:'km'};
   const f = it.fields, cols = `20px ${f.map(() => 'minmax(0,1fr)').join(' ')}`;
-  const unit = k => k === 'd' ? ex.unit : FIELDS[k].unit;
+  const unit = k => k === 'd' ? ex.unit : k === 'w' ? wuOf(it) : FIELDS[k].unit;
   return `<div class="card ${ui.grouping && ui.groupSel.includes(i) ? 'picked' : ''}" style="display:flex;flex-direction:column;gap:10px">
     <div class="row between"><div class="row" style="gap:10px">${ui.grouping ? `<button class="ck ${ui.groupSel.includes(i) ? 'on' : ''}" data-action="group-toggle" data-i="${i}" aria-label="${esc(ex.name)} 고르기" aria-pressed="${ui.groupSel.includes(i)}">${ui.groupSel.includes(i) ? '✓' : ''}</button>` : ''}<span class="bar" style="background:${catOf(ex.cat).color};height:22px"></span><b style="font-size:16px">${esc(ex.name)}</b></div>
       <div class="row" style="gap:2px"><button class="icon" data-action="move-item" data-i="${i}" data-v="-1" aria-label="위로">↑</button><button class="icon" data-action="remove-item" data-i="${i}" aria-label="${esc(ex.name)} 빼기">✕</button></div></div>
-    <div class="chips">${Object.keys(FIELDS).map(k => `<button class="chip sm" aria-pressed="${f.includes(k)}" data-action="field" data-i="${i}" data-f="${k}">${FIELDS[k].label}</button>`).join('')}</div>
+    <div class="chips">${Object.keys(FIELDS).map(k => `<button class="chip sm" aria-pressed="${f.includes(k)}" data-action="field" data-i="${i}" data-f="${k}">${FIELDS[k].label}</button>`).join('')}${f.includes('w') ? `<span class="grow"></span><span class="unitsw">${['kg','lb'].map(u => `<button aria-pressed="${wuOf(it) === u}" data-action="wu" data-i="${i}" data-v="${u}">${u}</button>`).join('')}</span>` : ''}</div>
     ${f.length ? `<div class="sets" style="grid-template-columns:${cols}"><span></span>${f.map(k => `<span class="h">${FIELDS[k].label}${unit(k) ? ' ' + unit(k).toUpperCase() : ''}</span>`).join('')}
       ${it.sets.map((s, si) => `<span class="k">${si+1}</span>${f.map(k => `<input class="cell" inputmode="${FIELDS[k].mode}" data-i="${i}" data-s="${si}" data-f="${k}" value="${esc(s[k] ?? '')}" placeholder="${k === 't' ? '0:00' : '0'}" aria-label="${si+1}세트 ${FIELDS[k].label}">`).join('')}`).join('')}</div>` : '<div class="sub">기록할 항목을 골라 주세요.</div>'}
     <div class="row" style="gap:8px"><button class="add" data-action="add-set" data-i="${i}">+ 세트 추가</button>${it.sets.length > 1 ? `<button class="add" style="width:auto;padding:9px 14px" data-action="del-set" data-i="${i}">− 마지막 세트</button>` : ''}</div>
@@ -646,7 +655,7 @@ function partHtml(it, i, p, pi) {
   const head = multi
     ? `<div class="fdiv"><span class="t">${String.fromCharCode(65 + pi)}</span><button class="c2 on" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(p.fmt.label)}</button>${p.pat ? `<button class="c2 val" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(patLabel(p.pat))}</button>` : ''}<span class="grow"></span><button class="icon" data-action="part-del" data-i="${i}" data-pi="${pi}" aria-label="${String.fromCharCode(65 + pi)} 틀 빼기">✕</button></div>`
     : `<div class="frame"><div class="row between"><span class="lbl">틀</span><button class="pill ${ui.frEdit ? 'lime' : ''}" style="font-size:12px;padding:3px 10px" data-action="fr-toggle">${ui.frEdit ? '완료' : '편집'}</button></div><span class="lbl" style="font-weight:500">방식</span>${fmtChips(i, pi, p)}<span class="lbl" style="font-weight:500">패턴</span>${patChips(i, pi, p)}${ui.frEdit ? '<div class="sub" style="font-size:12px">칩을 누르면 수정, ✕는 삭제예요. 칩을 꾹 누르면 순서도 바꿀 수 있어요.</div>' : ''}</div>`;
-  const rows = p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동 이름" aria-label="${j+1}번 운동"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(m.w)}" placeholder="—" aria-label="${j+1}번 무게"><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
+  const rows = p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동 이름" aria-label="${j+1}번 운동"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(m.w)}" placeholder="${U()}" aria-label="${j+1}번 무게"><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
       <div class="sug" id="sug-${i}-${pi}-${j}"></div>${j < p.moves.length - 1 ? `<button class="ins" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${j + 1}"><b>+ 틀 넣기</b></button>` : ''}`).join('');
   const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${p.fmt.res === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, p.fmt.res)}</div>` : '';
   return `<div class="part">${head}<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>${rows}
@@ -742,7 +751,7 @@ function hits(id, name) {
   const out = [], q = norm(name);
   for (const s of [...state.sessions].sort((a, b) => b.date.localeCompare(a.date))) for (const it of s.items) {
     if (it.type === 'ex') { const ex = exById(it.exId);
-      if ((id && it.exId === id) || (!id && q && ex && norm(ex.name).includes(q))) out.push({s, kind:'ex', head:ex?.name || '', detail:setsText(it, ex || {unit:'km'}) + (it.fields.includes('w') ? ' kg' : '')}); }
+      if ((id && it.exId === id) || (!id && q && ex && norm(ex.name).includes(q))) out.push({s, kind:'ex', head:ex?.name || '', detail:setsText(it, ex || {unit:'km'}) + (it.fields.includes('w') ? ' ' + wuOf(it) : '')}); }
     else { const ms = it.parts.flatMap(p => p.moves.filter(m => id ? (m.exId === id || (!m.exId && q && norm(m.n).includes(q))) : (q && norm(m.n).includes(q))).map(m => ({...m, q:m.q || schemeOf(p.pat)})));
       if (ms.length) out.push({s, kind:'wod', head:`${it.name}${wodResult(it) ? ' · ' + wodResult(it) : ''}`, detail:ms.map(m => [qTxt(m.q), m.n, m.w].filter(Boolean).join(' ')).join(', ')}); }
   }
@@ -793,12 +802,13 @@ function viewStats() {
     <div class="row" style="align-items:flex-end"><span class="n" style="font-size:104px">${wk.streak}</span><span class="disp" style="font-size:30px;padding:0 0 10px 6px">주째</span></div>
     <div class="sub" style="font-weight:500">최근 4주 계획 지킴 ${keep.rate}% · ${keep.due - keep.kept ? `놓친 계획 ${keep.due - keep.kept}개` : '놓친 계획 없음'}</div></div>
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div class="row between"><b>예상 1RM</b>${first ? `<span class="sub" style="color:var(--lime);font-weight:700">${last - first >= 0 ? '+' : ''}${Math.round((last - first)*10)/10}kg</span>` : ''}</div>
+    <div class="row between"><b>예상 1RM</b>${first ? `<span class="sub" style="color:var(--lime);font-weight:700">${last - first >= 0 ? '+' : ''}${Math.round((last - first)*10)/10}${U()}</span>` : ''}</div>
     <div class="chips">${weighted.map(e => `<button class="chip sm" aria-pressed="${ui.statEx === e.id}" data-action="stat-ex" data-v="${e.id}">${esc(e.name)}</button>`).join('')}</div>
-    ${pts.length > 1 ? `<div class="row" style="align-items:flex-end"><span class="n" style="font-size:58px">${maxV}</span><span class="unit">KG 최고</span></div><div class="chart">${chartSvg(pts)}</div>` : '<div class="empty">무게를 기록한 날이 2번 이상 있으면 그래프가 나와요.</div>'}
+    ${pts.length > 1 ? `<div class="row" style="align-items:flex-end"><span class="n" style="font-size:58px">${maxV}</span><span class="unit">${U().toUpperCase()} 최고</span></div><div class="chart">${chartSvg(pts)}</div>` : '<div class="empty">무게를 기록한 날이 2번 이상 있으면 그래프가 나와요.</div>'}
     <div class="sub" style="font-size:11.5px">그날 가장 좋은 세트로 계산해요 (무게 × (1 + 횟수 ÷ 30))</div></div>
   <div class="card"><div class="row between" style="margin-bottom:10px"><b>최근 12주</b><span class="sub" style="font-size:12px">칸을 누르면 그날 기록</span></div><div class="heat">${heat}</div></div>
   ${wods.length ? `<div class="card list" style="padding:4px 18px">${wods.map(({w, b}) => `<button class="it" data-action="wod-detail" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:20px"></span><span class="grow t">${esc(w.name)}</span><span class="n" style="font-size:24px">${esc(b.txt)}</span></button>`).join('')}</div>` : ''}
+  <div class="card row between"><b>무게 단위</b><span class="unitsw">${['kg','lb'].map(u => `<button aria-pressed="${U() === u}" data-action="unit" data-v="${u}">${u}</button>`).join('')}</span></div>
   <div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="row between"><b>내 데이터</b><span class="sub" style="font-size:12px">기록 ${state.sessions.length}개 · 이 기기에만 저장</span></div>
     <div class="sub" style="font-size:12px">앱을 지우거나 브라우저 데이터를 지우면 기록도 사라져요. 가끔 백업 파일을 저장해 두세요.</div>
     <div class="row" style="gap:8px"><button class="btn out small" data-action="export">백업 저장</button><label class="btn out small" style="cursor:pointer">백업 불러오기<input type="file" id="importFile" accept=".json,application/json" hidden></label></div>
@@ -814,7 +824,7 @@ function chartSvg(pts) {
   let g = ''; for (let v = lo; v <= hi; v += step) g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="#2a2a2a"/><text x="${L-6}" y="${y(v)+3}" text-anchor="end" fill="#8C8C8C" font-size="10">${v}</text>`;
   const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join(''), lp = pts[pts.length-1];
   const lab = [pts[0], pts[Math.floor(pts.length/2)], lp].map((p, i) => `<text x="${x(p.date)}" y="${H-5}" text-anchor="${['start','middle','end'][i]}" fill="#8C8C8C" font-size="10">${md(p.date)}</text>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="예상 1RM ${pts[0].v}kg에서 ${lp.v}kg">${g}<path d="${line}L${x(lp.date)},${H-B}L${L},${H-B}Z" fill="#C8F031" opacity=".12"/><path d="${line}" fill="none" stroke="#C8F031" stroke-width="2.5" stroke-linejoin="round"/><circle cx="${x(lp.date)}" cy="${y(lp.v)}" r="5" fill="#C8F031"/><text x="${x(lp.date)+8}" y="${y(lp.v)+4}" fill="#F2F2F2" font-size="13" font-weight="700">${lp.v}</text>${lab}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="예상 1RM ${pts[0].v}${U()}에서 ${lp.v}${U()}">${g}<path d="${line}L${x(lp.date)},${H-B}L${L},${H-B}Z" fill="#C8F031" opacity=".12"/><path d="${line}" fill="none" stroke="#C8F031" stroke-width="2.5" stroke-linejoin="round"/><circle cx="${x(lp.date)}" cy="${y(lp.v)}" r="5" fill="#C8F031"/><text x="${x(lp.date)+8}" y="${y(lp.v)+4}" fill="#F2F2F2" font-size="13" font-weight="700">${lp.v}</text>${lab}</svg>`;
 }
 
 /* ---------- sheets ---------- */
@@ -836,6 +846,7 @@ function sheetCatFilter() {
   openSheet(`<h2 class="disp" style="font-size:30px">보기 설정</h2>
     <div class="row between"><span class="eb">카테고리</span><button class="pill" data-action="cats-edit">편집</button></div>
     <div class="card list" style="padding:2px 16px">${cats().map(c => `<label class="cat-row"><input type="checkbox" data-catf="${c.k}" ${ui.hidden.includes(c.k) ? '' : 'checked'}><span class="bar" style="background:${c.color};height:16px"></span><span class="grow">${c.label}</span></label>`).join('')}</div>
+    <div class="card row between"><span>무게 단위</span><span class="unitsw">${['kg','lb'].map(u => `<button aria-pressed="${U() === u}" data-action="unit" data-v="${u}">${u}</button>`).join('')}</span></div>
     <div class="card row between"><span>주간 목표</span><div class="row" style="gap:10px"><button class="circle" data-action="goal" data-v="-1" aria-label="줄이기">−</button><span class="n" style="font-size:30px">${state.goal}</span><button class="circle" data-action="goal" data-v="1" aria-label="늘리기">+</button></div></div>
     <button class="btn lime" data-action="close-sheet">확인</button>`);
 }
@@ -960,11 +971,12 @@ function openTpl(src) {
 /* a saved WOD keeps frames and exercises, not results */
 function tplFromItem(it) { return {id:it.wodId || null, name:(it.name || '').trim() || '오늘의 와드', note:'', parts:it.parts.map(p => ({fmt:{...p.fmt}, pat:p.pat ? {...p.pat} : null, moves:p.moves.filter(m => m.n.trim()).map(m => ({n:m.n.trim(), exId:m.exId || null, q:(m.q || '').trim(), w:(m.w || '').trim()}))})).filter(p => p.moves.length)}; }
 /* drop empty rows; link every exercise name to the exercise list, adding new ones so they show up in search */
+const withUnit = w => { w = String(w || '').trim(); return /^[\d.]+(\/[\d.]+)?$/.test(w) ? w + U() : w; };
 function cleanWod(it, onNew) {
   const parts = it.parts.map(p => ({...p, moves:p.moves.filter(m => m.n.trim()).map(m => {
     let ex = (m.exId && exById(m.exId)?.name === m.n.trim() && exById(m.exId)) || findEx(m.n);
     if (!ex) { ex = {id:uid(), name:m.n.trim(), cat:m.w ? 'weight' : 'body', fields:m.w ? ['w','r'] : ['r'], unit:'km'}; state.exercises.push(ex); onNew(); }
-    return {n:ex.name, exId:ex.id, q:(m.q || '').trim(), w:(m.w || '').trim()}; })})).filter(p => p.moves.length || p.res?.v || p.res?.status);
+    return {n:ex.name, exId:ex.id, q:(m.q || '').trim(), w:withUnit(m.w)}; })})).filter(p => p.moves.length || p.res?.v || p.res?.status);
   if (!parts.length && !wodResult(it)) return null;
   return {...it, name:(it.name || '').trim() || '오늘의 와드', parts:parts.length ? parts : [{...it.parts[0], moves:[]}]};
 }
@@ -1053,7 +1065,7 @@ const A = {
   'group-do': () => { const sel = [...ui.groupSel].sort((a, b) => a - b), items = ui.draft.items;
     if (sel.length < 1) { toast('묶을 운동을 골라 주세요'); return; }
     const moves = sel.map(i => { const it = items[i], ex = exById(it.exId) || {name:'', unit:'km'}, s0 = it.sets.find(x => Object.values(x).some(Boolean)) || {};
-      return {n:ex.name, exId:it.exId, q:s0.r ? String(s0.r) : s0.d ? `${s0.d}${ex.unit}` : s0.t || '', w:s0.w ? `${s0.w}kg` : ''}; });
+      return {n:ex.name, exId:it.exId, q:s0.r ? String(s0.r) : s0.d ? `${s0.d}${ex.unit}` : s0.t || '', w:s0.w ? `${s0.w}${wuOf(it)}` : ''}; });
     const w = {...dailyItem(), parts:[{fmt:fmtCopy(state.formats[0] || DEF_FORMATS[0]), pat:null, res:{}, moves}]};
     items.splice(sel[0], 1, w); for (const i of sel.slice(1).reverse()) items.splice(i, 1);
     ui.grouping = false; ui.groupSel = []; render(true); toast('와드로 묶었어요. 틀과 결과를 적어 주세요'); },
@@ -1064,6 +1076,8 @@ const A = {
   field: el => { const it = ui.draft.items[+el.dataset.i], f = el.dataset.f; it.fields = it.fields.includes(f) ? it.fields.filter(x => x !== f) : ['w','r','t','d'].filter(x => x === f || it.fields.includes(x)); render(true); },
   'add-set': el => { const it = ui.draft.items[+el.dataset.i]; it.sets.push({...(it.sets[it.sets.length-1] || {})}); render(true); },
   'del-set': el => { ui.draft.items[+el.dataset.i].sets.pop(); render(true); },
+  wu: el => { const it = ui.draft.items[+el.dataset.i]; it.wu = el.dataset.v; render(true); },
+  unit: el => { state.unit = el.dataset.v; save(); render(true); refreshSheet(); toast(`기본 무게 단위를 ${el.dataset.v}로 바꿨어요`); },
   scale: el => { curItems()[+el.dataset.i].scale = el.dataset.v; render(true); },
   // plan editor
   'p-cat': el => { ui.pdraft.cat = el.dataset.v; render(true); },
