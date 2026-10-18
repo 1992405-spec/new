@@ -171,6 +171,8 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .btnrow>.btn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:8px;padding-right:8px}
 .chip .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 .smv{display:flex;flex-direction:column;gap:8px;padding:10px 0;border-bottom:1px dashed #2e2e2e}
+.cfg{display:flex;align-items:center;gap:8px;padding:6px 0 6px 10px;border-left:3px solid var(--lime);margin:4px 0}
+.cfg .c2{pointer-events:none}
 .toast{position:absolute;left:50%;top:18px;transform:translateX(-50%);background:var(--lime);color:#000;padding:10px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:30;white-space:nowrap}
 .search{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;width:100%}
 .cat-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:15px}
@@ -371,6 +373,9 @@ const partRes = p => (p.fmt?.id !== 'none' && p.fmt?.res) || pList(p).map(x => x
 const pList = p => p.pats || (p.pat ? [p.pat] : []);
 const patsLabel = p => pList(p).map(patLabel).filter(Boolean).join(' · ');
 const schemeOfP = p => pList(p).map(schemeOf).find(Boolean) || '';
+/* 구성 lines sit between exercise rows: each has "at" = the row it comes before; a row takes the rep scheme of the last line above it */
+const cfgLines = p => [...(p.fmt?.id && p.fmt.id !== 'none' ? [{kind:'fmt', at:p.fmtAt || 0}] : []), ...pList(p).map((x, k) => ({kind:'pat', k, at:x.at || 0}))].sort((a, b) => a.at - b.at);
+const schemeAt = (p, j) => { let sc = ''; for (const l of cfgLines(p)) if (l.kind === 'pat' && l.at <= j) sc = schemeOf(pList(p)[l.k]) || sc; return sc; };
 const oldPat = p => p && !p.tpl ? patFrom(DEF_PATTERNS.find(t => t.id === p.kind) || DEF_PATTERNS[0], p.v) : p;
 /* "없음": a part with no format; the label stays empty so summaries skip it */
 const NO_FMT = {id:'none', label:'', res:'text'};
@@ -537,6 +542,7 @@ const wodById = id => allNamed().find(w => w.id === id) || state.mine.find(w => 
 const sorted = () => [...state.sessions].sort((a,b) => a.date.localeCompare(b.date));
 const sessionsOn = ds => state.sessions.filter(s => s.date === ds);
 const autoCat = s => { const it = s.items[0]; if (!it) return 'etc'; const k = it.type !== 'wod' ? exById(it.exId)?.cat : it.parts.length === 1 && onlySets(it.parts[0]) ? mvEx(it.parts[0].moves.find(m => m.n.trim()) || {})?.cat : 'wod'; return state.cats.some(c => c.k === k) ? k : 'etc'; };
+const cardCat = it => it.cat && state.cats.some(c => c.k === it.cat) ? it.cat : autoCat({items:[it]});
 const sessionCat = s => s.cat && state.cats.some(c => c.k === s.cat) ? s.cat : autoCat(s);
 
 /* ---------- plans ---------- */
@@ -641,8 +647,8 @@ function render(keep) {
 const GUIDE_KEY = 'setlog-guide-seen';
 const GUIDE = [
   ['캘린더', '날짜를 누르면 그날 기록이 보여요. 칸 아래 색 막대는 기록, 테두리만 있는 건 계획이에요.'],
-  ['기록하기', '구성에서 세트를 고르면 운동마다 세트별 무게와 횟수를 적어요. 지난 무게가 미리 채워져요.'],
-  ['WOD 기록', '방식(For Time, 21-15-9…)은 여러 개 고를 수 있어요. + 방식은 같은 묶음에, + 구간은 A, B로 나눠 기록해요.'],
+  ['기록하기', '+ 구성에서 세트를 넣으면 운동마다 세트별 무게와 횟수를 적어요. 지난 무게가 미리 채워져요.'],
+  ['WOD 기록', '+ 구성을 누를 때마다 For Time, 21-15-9 같은 줄이 하나씩 쌓여요. + 구간은 A, B로 나눠 기록해요.'],
   ['WOD 모음', '네임드 WOD와 내가 만든 WOD를 저장해 두고 바로 불러와요. 네임드 WOD도 직접 추가할 수 있어요.'],
   ['돌아보기', '주간 목표 연속 기록과 운동별 성장 그래프를 봐요.']
 ];
@@ -694,7 +700,7 @@ function viewCal() {
   ${ui.view !== 'list' ? `<div class="legend">${cats().filter(c => !ui.hidden.includes(c.k)).map(c => `<span><i style="background:${c.color}"></i>${c.label}</span>`).join('')}<span><i style="border:1.5px dashed #888;height:6px"></i>계획</span></div>
   <div class="eb" style="${ui.sel === TODAY() ? 'color:var(--lime)' : ''}">${dayLabel(ui.sel)}${ui.sel === TODAY() ? ' · 오늘' : ''}</div>
   <div class="card list" style="padding:4px 16px">${ev.map(e => entryRow(e, ui.sel)).join('') || `<div class="empty">${ui.sel > TODAY() ? '이날은 계획이 없어요.' : '이날은 기록이 없어요.'}</div>`}</div>` : ''}
-  <div class="sticky"><button class="btn lime" id="recBtn" data-action="record">+ 기록하기</button></div>`;
+  <div class="sticky"><button class="btn lime" id="recBtn" data-action="record">${ui.sel > TODAY() ? `+ ${md(ui.sel)} 계획 만들기` : ui.sel === TODAY() ? '+ 기록하기' : `+ ${md(ui.sel)} 기록하기`}</button></div>`;
 }
 function entryRow(e, ds) {
   const d = parseYmd(ds);
@@ -724,7 +730,7 @@ function pageDay() {
     const wodHero = s.items.filter(i => i.type === 'wod').map(it => { const b = bestWod(it.wodId, s.id), multi = it.parts.length > 1, p0 = it.parts[0];
       return `<div class="hero"><div class="row between"><span class="eb" style="font-weight:700">${esc([it.name, multi ? '' : p0?.fmt.label, multi ? '' : p0 && patsLabel(p0)].filter(Boolean).join(' · '))}</span><span class="pill" style="background:#000;color:var(--lime);border-color:#000;font-weight:700">${esc(it.scale || 'Rx')}</span></div>
       <div class="n" style="font-size:100px;margin-top:2px">${esc(wodResult(it) || '-')}</div><div class="sub">${it.wodId ? b ? `이전 최고 ${esc(b.txt)}` : '첫 기록' : ''}${it.partner ? ` · 파트너 ${esc(it.partner)}` : ''}</div>
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.parts.map((p, pi) => `${multi ? `<div style="font-weight:800;margin-top:${pi ? 8 : 0}px">${String.fromCharCode(65 + pi)} · ${esc([p.fmt.label, patsLabel(p), partResult(p)].filter(Boolean).join(' · '))}</div>` : ''}${p.moves.map(m => `<div>${esc(m.sets?.length ? `${m.n} ${setsText(m, mvEx(m) || {unit:'km'})}${m.fields?.includes('w') ? ' ' + (m.u || 'kg') : ''}` : [m.q ? qTxt(m.q) : schemeOfP(p), m.n, m.w].filter(Boolean).join(' '))}</div>`).join('')}`).join('')}</div></div>`; }).join('');
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.parts.map((p, pi) => `${multi ? `<div style="font-weight:800;margin-top:${pi ? 8 : 0}px">${String.fromCharCode(65 + pi)} · ${esc([p.fmt.label, patsLabel(p), partResult(p)].filter(Boolean).join(' · '))}</div>` : ''}${p.moves.map((m, j) => `<div>${esc(m.sets?.length ? `${m.n} ${setsText(m, mvEx(m) || {unit:'km'})}${m.fields?.includes('w') ? ' ' + (m.u || 'kg') : ''}` : [m.q ? qTxt(m.q) : schemeAt(p, j), m.n, m.w].filter(Boolean).join(' '))}</div>`).join('')}`).join('')}</div></div>`; }).join('');
     return `<div><div class="eb">${s.mood ? `${s.mood} ${MOODS.find(m => m[0] === s.mood)?.[1] || ''}` : ''}</div><h1 class="disp" style="font-size:52px;margin-top:4px">${esc(s.title || '운동')}</h1>
       <div class="sub" style="margin-top:6px">${[s.duration ? `${s.duration}분` : '', s.place, plan ? `${repeatText(plan)} 계획` : ''].filter(Boolean).map(esc).join(' · ')}</div></div>
       ${heroHtml}${wodHero}
@@ -759,11 +765,10 @@ function pageEdit() {
   ${plan ? `<div class="row wrap" style="gap:8px"><span class="pill lime">${esc(repeatText(plan))} · ${esc(plan.title)} 불러옴</span><span class="sub" style="font-size:12px">지난 무게를 미리 채웠어요</span></div>` : ''}
   <datalist id="exNames">${state.exercises.map(e => `<option value="${esc(e.name)}">`).join('')}</datalist>
   <input class="inp big" id="dTitle" data-d="title" value="${esc(d.title)}" placeholder="오늘 운동 제목 (예: 하체 데이)" aria-label="운동 제목">
-  <div><div class="eb" style="margin-bottom:8px">캘린더 카테고리</div><div class="chips">${cats().map(c => `<button class="chip sm" aria-pressed="${(d.cat || autoCat(d)) === c.k}" data-action="d-cat" data-v="${c.k}"><i class="dot" style="background:${c.color}"></i>${esc(c.label)}</button>`).join('')}</div></div>
   <div><div class="eb" style="margin-bottom:8px">오늘 컨디션</div><div class="chips">${MOODS.map(([e, l]) => `<button class="chip" aria-pressed="${d.mood === e}" data-action="mood" data-v="${e}">${e} ${l}</button>`).join('')}</div></div>
   ${d.items.map((it, i) => it.type === 'wod' ? wodCard(it, i) : exEditCard(it, i)).join('') || '<div class="card empty">아래에서 카드를 추가해 주세요.</div>'}
   ${ui.grouping ? `<div class="groupbar"><span class="sub" style="color:var(--ink)">${ui.groupSel.length}개 선택</span><span class="grow"></span><button class="pill" data-action="group-cancel">취소</button><button class="btn lime small" style="width:auto;padding:10px 18px" data-action="group-do">WOD로 묶기</button></div>`
-    : `<div class="row" style="gap:8px"><button class="btn out small" data-action="add-daily">+ 카드 추가</button><button class="btn out small" data-action="pick-wod">WOD 불러오기</button></div>`}
+    : ''}
   <div class="field"><span class="eb">메모</span><textarea class="inp" id="dMemo" data-d="memo" placeholder="오늘 느낀 점, 다음에 신경 쓸 것">${esc(d.memo)}</textarea></div>
   <input class="inp" id="dPlace" data-d="place" value="${esc(d.place)}" placeholder="장소 (선택)" aria-label="장소">`;
 }
@@ -788,21 +793,10 @@ function usage() { const c = {}; for (const s of state.sessions) for (const it o
 /* one 방식 row: tap to pick or unpick, several at once; a chip with N shows its number box below */
 const chipList = () => [...state.formats, ...state.patterns];
 const chipOn = (fmtId, pats, x) => fmtId === x.id || pats.some(y => y.t === x.id);
-function frameChips(i, pi, p) {
-  const ps = pList(p);
-  if (ui.frEdit) return `<div class="chips2">${chipList().map(x => `<button class="c2" data-action="fr-edit" data-kind="${chipKind(x)}" data-id="${x.id}">${esc(chipText(x))}<span class="x" data-action="fr-del" data-kind="${chipKind(x)}" data-id="${x.id}" role="button" aria-label="${esc(x.label)} 삭제">✕</span></button>`).join('')}<button class="c2 add" data-action="fr-edit">+ 추가</button></div>`;
-  return `<div class="chips2">${chipList().map(x => `<button class="c2 ${chipOn(p.fmt.id, ps, x) ? 'on' : ''}" data-action="set-chip" data-i="${i}" data-pi="${pi}" data-v="${x.id}" data-lp="${chipKind(x)}:${x.id}">${esc(chipText(x))}</button>`).join('')}<button class="c2 ${p.fmt.id === 'none' && !ps.length ? 'on' : ''}" data-action="set-chip" data-i="${i}" data-pi="${pi}" data-v="none">없음</button></div>
-    ${patBoxes(i, pi, p)}`;
-}
-function patBoxes(i, pi, p, short) {
-  const ps = pList(p), dup = x => ps.filter(y => y.t === x.t).length > 1;
-  return ps.map((x, k) => hasN(x) ? `<div class="row" style="gap:6px">${patInput(chipById(x.t) || x, x.v, `data-patv="${pi}" data-pk="${k}" data-i="${i}"`)}${dup(x) ? `<button class="icon" data-action="pat-del" data-i="${i}" data-pi="${pi}" data-pk="${k}" aria-label="${esc(x.label)} 빼기">✕</button>` : ''}</div>` + (short ? '' : recentPat(chipById(x.t) || x, `data-action="set-patv" data-i="${i}" data-pi="${pi}" data-pk="${k}"`)) : '').join('');
-}
-/* "+ 방식": one more chip in the same group of exercises (21-15-9 and 42-30-18 together), no new section */
 function sheetChipAdd(i, pi) {
   ui.sheet = () => sheetChipAdd(i, pi);
-  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">방식 추가</h2><button class="pill" data-action="close-sheet">닫기</button></div>
-    <div class="sub" style="font-size:13px">구간을 나누지 않고 이 운동들에 방식을 하나 더 넣어요. 같은 칩도 여러 번 넣을 수 있어요. 예: 21-15-9 + 42-30-18</div>
+  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">구성 추가</h2><button class="pill" data-action="frames-open">구성 편집</button></div>
+    <div class="sub" style="font-size:13px">고른 구성이 카드에 한 줄로 들어가요. 그 아래에 운동을 넣으면 돼요. 예: 21-15-9 → 운동들 → 42-30-18 → 운동들</div>
     <div class="chips2">${chipList().map(x => `<button class="c2" data-action="chip-add-pick" data-i="${i}" data-pi="${pi}" data-v="${x.id}">${esc(chipText(x))}</button>`).join('')}</div>`);
 }
 /* pick or unpick chip id on {fmt, pats}; the first picked format chip stays in fmt (it sets how the result is written) */
@@ -828,25 +822,32 @@ function resInput(attrs, v, type) {
   const R = RES_TYPES[type] || RES_TYPES.text;
   return `<input ${attrs} inputmode="${R.mode}" value="${esc(v || '')}" placeholder="${R.ph || '결과'}">`;
 }
+function cfgLineHtml(i, pi, p, l) {
+  const del = `<button class="icon" data-action="cfg-del" data-i="${i}" data-pi="${pi}" data-kind="${l.kind}" data-k="${l.k ?? ''}" aria-label="구성 빼기">✕</button>`;
+  if (l.kind === 'fmt') return `<div class="cfg"><span class="c2 on">${esc(p.fmt.label)}</span><span class="grow"></span>${del}</div>`;
+  const x = pList(p)[l.k], t = chipById(x.t) || x;
+  return hasN(x) ? `<div class="cfg">${patInput(t, x.v, `data-patv="${pi}" data-pk="${l.k}" data-i="${i}"`)}<span class="grow"></span>${del}</div>${x.v ? '' : recentPat(t, `data-action="set-patv" data-i="${i}" data-pi="${pi}" data-pk="${l.k}"`)}`
+    : `<div class="cfg"><span class="c2 on">${esc(chipText(t))}</span><span class="grow"></span>${del}</div>`;
+}
 function partHtml(it, i, p, pi) {
-  const multi = it.parts.length > 1, scheme = schemeOfP(p);
-  const head = multi
-    ? `<div class="fdiv"><span class="t">${String.fromCharCode(65 + pi)}</span><button class="c2 on" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(p.fmt.label || '방식 없음')}</button>${pList(p).map(x => `<button class="c2 val" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(patLabel(x))}</button>`).join('')}<span class="grow"></span><button class="icon" data-action="part-del" data-i="${i}" data-pi="${pi}" aria-label="${String.fromCharCode(65 + pi)} 구간 없애기">✕</button></div>${patBoxes(i, pi, p, true)}`
-    : `<div class="frame"><div class="row between"><span class="lbl">구성</span><button class="pill ${ui.frEdit ? 'lime' : ''}" style="font-size:12px;padding:3px 10px" data-action="fr-toggle">${ui.frEdit ? '완료' : '편집'}</button></div>${frameChips(i, pi, p)}${ui.frEdit ? '<div class="sub" style="font-size:12px">칩을 누르면 수정, ✕는 삭제예요. 칩을 꾹 누르면 순서도 바꿀 수 있어요.</div>' : ''}</div>`;
+  const multi = it.parts.length > 1, L = cfgLines(p), n = p.moves.length;
+  const linesAt = j => L.filter(l => j === n ? l.at >= n : l.at === j).map(l => cfgLineHtml(i, pi, p, l)).join('');
+  const head = multi ? `<div class="fdiv"><span class="t">${String.fromCharCode(65 + pi)}</span><span class="grow"></span><button class="icon" data-action="part-del" data-i="${i}" data-pi="${pi}" aria-label="${String.fromCharCode(65 + pi)} 구간 없애기">✕</button></div>` : '';
   const ord = ui.mvOrder === i, first = pi === 0, last = pi === it.parts.length - 1, sm = isSetPart(p);
-  const rows = sm && !ord ? p.moves.map((m, j) => setMoveHtml(i, pi, ensureSets(m), j)).join('') : ord ? p.moves.map((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || scheme || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && j === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && j === p.moves.length - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`).join('')
-    : p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><div class="wcell"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(wNum(m.w))}" placeholder="-" aria-label="${j+1}번 무게"><button class="wu" data-action="mv-wu" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 무게 단위 바꾸기">${mvUnit(m)}</button></div><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
-      <div class="sug" id="sug-${i}-${pi}-${j}"></div>${j < p.moves.length - 1 ? `<button class="ins" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${j + 1}" aria-label="여기서 구간 나누기"><b>구간 나누기</b></button>` : ''}`).join('');
+  const row = (m, j) => sm ? setMoveHtml(i, pi, ensureSets(m), j) : `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(schemeAt(p, j) || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><div class="wcell"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(wNum(m.w))}" placeholder="-" aria-label="${j+1}번 무게"><button class="wu" data-action="mv-wu" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 무게 단위 바꾸기">${mvUnit(m)}</button></div><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
+      <div class="sug" id="sug-${i}-${pi}-${j}"></div>${j < n - 1 ? `<button class="ins" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${j + 1}" aria-label="여기서 구간 나누기"><b>구간 나누기</b></button>` : ''}`;
+  const rows = ord ? p.moves.map((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || schemeAt(p, j) || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && j === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && j === n - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`).join('')
+    : p.moves.map((m, j) => linesAt(j) + (j || sm ? '' : '<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>') + row(m, j)).join('') + linesAt(n);
   const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${partRes(p) === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, partRes(p))}</div>` : '';
-  return `<div class="part">${head}${ord || sm ? '' : '<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>'}${rows}
-    ${ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-find" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && wodMoves(it).length > 1 ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" data-action="chip-add" data-i="${i}" data-pi="${pi}">+ 방식</button><button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${p.moves.length}">+ 구간</button></div>`}
-    ${scheme && !multi ? `<div class="note">횟수는 구성(${esc(scheme)})에서 자동으로 채워져요</div>` : ''}${pres}</div>`;
+  return `<div class="part">${head}${rows}
+    ${ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-find" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && wodMoves(it).length > 1 ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="chip-add" data-i="${i}" data-pi="${pi}">+ 구성</button><button class="addex" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${n}">+ 구간</button></div>`}
+    ${pres}</div>`;
 }
 /* live preview of what is being recorded, shown in the result box and redrawn on every keystroke */
 function wodSum(it) {
   const multi = it.parts.length > 1;
   return it.parts.map((p, pi) => { const head = [multi ? String.fromCharCode(65 + pi) : '', p.fmt.label, patsLabel(p), multi ? partResult(p) : ''].filter(Boolean).join(' · ');
-    const ms = p.moves.filter(m => m.n.trim()).map(m => `<div>${esc([m.q ? qTxt(m.q) : schemeOfP(p), m.n.trim(), m.w].filter(Boolean).join(' '))}</div>`).join('');
+    const ms = p.moves.map((m, j) => m.n.trim() ? `<div>${esc([m.q ? qTxt(m.q) : schemeAt(p, j), m.n.trim(), m.w].filter(Boolean).join(' '))}</div>` : '').join('');
     return `<div class="sh">${esc(head)}</div>${ms || '<div style="opacity:.5">운동을 적으면 여기에 보여요</div>'}`; }).join('');
 }
 function updateSum(i) { const el = document.getElementById(`wsum-${i}`), it = curItems()?.[+i]; if (el && it?.type === 'wod') el.innerHTML = wodSum(it); const pv = document.querySelector(`[data-respv="${i}"]`); if (pv && it?.type === 'wod') pv.textContent = wodResult(it) || '-'; }
@@ -879,7 +880,8 @@ function wodCard(it, i) {
   const mine = it.wodId && state.mine.some(w => w.id === it.wodId);
   return `<div class="card wc">
     <div class="row between" style="gap:8px"><input class="inp big" data-wn="${i}" value="${esc(it.name)}" placeholder="${tpl ? 'WOD 제목' : 'Daily WOD'}" aria-label="WOD 제목" style="font-family:var(--num);font-weight:800;font-size:28px;padding:6px 10px">
-      ${it.wodId && !tpl ? '<span class="pill lime">불러옴</span>' : ''}${tpl ? '' : `<button class="icon" data-action="remove-item" data-i="${i}" aria-label="WOD 빼기">✕</button>`}</div>
+      ${it.wodId && !tpl ? '<span class="pill lime">불러옴</span>' : ''}${tpl ? '' : `<button class="pill" style="font-size:12px;padding:5px 10px;white-space:nowrap" data-action="pick-wod" data-i="${i}">불러오기</button>`}${tpl || curItems().length < 2 ? '' : `<button class="icon" data-action="remove-item" data-i="${i}" aria-label="WOD 빼기">✕</button>`}</div>
+    ${tpl ? '' : `<div class="row" style="gap:6px;flex-wrap:wrap">${cats().map(c => `<button class="chip sm" aria-pressed="${cardCat(it) === c.k}" data-action="card-cat" data-i="${i}" data-v="${c.k}"><i class="dot" style="background:${c.color}"></i>${esc(c.label)}</button>`).join('')}</div>`}
     ${it.parts.map((p, pi) => partHtml(it, i, p, pi)).join('')}
     ${freq.length ? `<div class="lbl">자주 한 운동</div><div class="chips2">${freq.map(e => `<button class="c2" data-action="mv-quick" data-i="${i}" data-id="${e.id}">${esc(e.name)}</button>`).join('')}</div>` : ''}
     ${tpl ? '' : wodResultBox(it, i)}
@@ -1097,7 +1099,7 @@ function sheetPickEx() {
     <input class="search" id="pickQ" type="search" placeholder="운동 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
     <div class="chips">${[{k:'all', label:'전체'}, ...exCats()].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
     <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`
-  : `<div class="row between"><h2 class="disp" style="font-size:30px">WOD 불러오기</h2><button class="pill" data-action="close-sheet">닫기</button></div>
+  : `<div class="row between"><h2 class="disp" style="font-size:30px">WOD 불러오기</h2>${ui.swapCard != null && !isBlankCard(curItems()[ui.swapCard] || {parts:[]}) ? '<span class="sub" style="font-size:12px">지금 카드 내용이 바뀌어요</span>' : ''}<button class="pill" data-action="close-sheet">닫기</button></div>
     <input class="search" id="pickQ" type="search" placeholder="WOD 검색" value="${esc(ui.pickQ)}" aria-label="WOD 검색">
     <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`);
 }
@@ -1200,8 +1202,8 @@ function toCards(items) {
   return out;
 }
 const isBlankCard = it => it.type === 'wod' && !it.wodId && !(it.name || '').trim() && !wodResult(it) && it.parts.every(p => p.fmt.id === 'none' && !pList(p).length && p.moves.every(m => !m.n.trim()));
-function pushCard(d, it) { if (d.items.length === 1 && isBlankCard(d.items[0])) d.items = [it]; else d.items.push(it); }
-function openEditor(draft) { draft.items = toCards(draft.items); if (!draft.items.length) draft.items.push(dailyItem()); ui.mvOrder = null; ui.draft = draft; ui.page = 'edit'; ui.confirm = null; closeSheet(); render(); }
+function pushCard(d, it) { const k = ui.swapCard; ui.swapCard = null; if (k != null && d.items[k]) { it.cat ||= d.items[k].cat; d.items[k] = it; } else if (d.items.length === 1 && isBlankCard(d.items[0])) d.items = [it]; else d.items.push(it); }
+function openEditor(draft) { draft.items = toCards(draft.items); if (!draft.items.length) draft.items.push(dailyItem()); if (draft.cat && !draft.items[0].cat) draft.items[0].cat = draft.cat; ui.mvOrder = null; ui.draft = draft; ui.page = 'edit'; ui.confirm = null; closeSheet(); render(); }
 function openDay(ds) { ui.dayDate = ds; ui.page = 'day'; ui.confirm = null; closeSheet(); render(); }
 function openPlan(p) { ui.pdraft = p; ui.page = 'plan'; ui.confirm = null; closeSheet(); render(); }
 const recordDate = () => ui.sel > TODAY() ? TODAY() : ui.sel;
@@ -1251,7 +1253,7 @@ const A = {
   view: el => { ui.view = el.dataset.v; render(true); },
   month: el => shiftMonth(+el.dataset.v),
   'go-today': () => { ui.sel = TODAY(); ui.month = ui.sel.slice(0, 7); render(true); },
-  record: () => openEditor(newDraft(recordDate())),
+  record: () => ui.tab === 'cal' && ui.sel > TODAY() ? openPlan(newPlanDraft(ui.sel)) : openEditor(newDraft(ui.tab === 'cal' ? ui.sel : TODAY())),
   'record-on': el => openEditor(newDraft(el.dataset.date)),
   'open-day': el => openDay(el.dataset.date),
   'plan-detail': el => sheetPlanDetail(el.dataset.id, el.dataset.date),
@@ -1264,10 +1266,11 @@ const A = {
   'del-session': el => { const k = 'del-' + el.dataset.id; if (ui.confirm !== k) { ui.confirm = k; return render(true); } state.sessions = state.sessions.filter(s => s.id !== el.dataset.id); save(); ui.confirm = null; if (!sessionsOn(ui.dayDate).length) ui.page = null; render(); toast('기록을 삭제했어요'); },
   'stat-ex-go': el => { ui.statEx = el.dataset.v; ui.page = null; ui.tab = 'stats'; render(); },
   // editor
-  'cancel-edit': () => { const dirty = ui.draft.items.length || ui.draft.memo || ui.draft.title; if (dirty && !ui.draft.id && ui.confirm !== 'cancel') { ui.confirm = 'cancel'; return render(true); } ui.page = ui.draft.id ? 'day' : null; ui.confirm = null; ui.grouping = false; ui.frEdit = false; render(); },
+  'cancel-edit': () => { const dirty = ui.draft.items.some(it => !isBlankCard(it)) || ui.draft.memo || ui.draft.title; if (dirty && !ui.draft.id && ui.confirm !== 'cancel') { ui.confirm = 'cancel'; return render(true); } ui.page = ui.draft.id ? 'day' : null; ui.confirm = null; ui.grouping = false; ui.frEdit = false; render(); },
   'save-edit': () => {
     const d = ui.draft;
     let added = 0;
+    d.cat = d.items.find(it => it.type === 'wod' && it.cat)?.cat || d.cat || ''; if (!d.cat && d.items[0]?.type === 'wod') d.cat = cardCat(d.items[0]);
     d.items = d.items.flatMap(it => setsOnlyCard(it) ? cardToEx(it, () => added++) : [it]);
     d.items = d.items.map(it => it.type === 'wod' ? cleanWod(it, () => added++) : it).filter(Boolean);
     d.items = d.items.map(it => it.type === 'ex' ? {...it, sets:it.sets.filter(s => it.fields.some(k => s[k] !== undefined && s[k] !== ''))} : it).filter(it => it.type === 'wod' || it.sets.length);
@@ -1277,21 +1280,26 @@ const A = {
     if (d.id) { const i = state.sessions.findIndex(s => s.id === d.id); state.sessions[i] = d; } else { d.id = uid(); state.sessions.push(d); }
     save(); ui.sel = d.date; ui.month = d.date.slice(0, 7); openDay(d.date); toast(added ? `기록을 저장했어요 · 새 운동 ${added}개를 운동목록에 넣었어요` : '기록을 저장했어요');
   },
-  'd-cat': el => { ui.draft.cat = el.dataset.v; render(true); },
+  'card-cat': el => { curItems()[+el.dataset.i].cat = el.dataset.v; render(true); },
   mood: el => { ui.draft.mood = ui.draft.mood === el.dataset.v ? '' : el.dataset.v; render(true); },
   'pick-ex': () => { ui.pickFor = null; ui.pickQ = ''; sheetPickEx(); },
   'pick-cat': el => { ui.pickCat = el.dataset.v; refreshSheet(); },
   'add-ex': el => { if (ui.pickFor) { const f = ui.pickFor, p = curItems()[f.i]?.parts[f.pi], ex = exById(el.dataset.id); if (p && ex) putMove(p, ex); ui.pickFor = null; closeSheet(); render(true); return; }
     const it = exItem(el.dataset.id, ui.draft.date); ui.draft.items.push(it); closeSheet(); render(true); toast(it.prefilled ? '지난 기록을 채웠어요' : '운동을 추가했어요'); setTimeout(() => $('#screen').scrollTo({top:$('#screen').scrollHeight, behavior:'smooth'}), 30); },
   'record-daily': () => openEditor(newDraft(recordDate())),
-  'pick-wod': () => { ui.pickFor = null; ui.pickQ = ''; sheetPickEx(); },
+  'pick-wod': el => { ui.pickFor = null; ui.swapCard = el.dataset.i !== undefined ? +el.dataset.i : null; ui.pickQ = ''; sheetPickEx(); },
   'add-daily': () => { ui.draft.items.push(dailyItem()); closeSheet(); render(true); setTimeout(() => { const t = document.querySelectorAll('[data-wn]'); t[t.length - 1]?.closest('.card')?.scrollIntoView({block:'start'}); }, 30); },
   'chip-add': el => sheetChipAdd(+el.dataset.i, +el.dataset.pi),
   'chip-add-pick': el => { const i = el.dataset.i, pi = el.dataset.pi, p = curItems()[+i].parts[+pi], x = chipById(el.dataset.v); if (!x) return;
     const before = partRes(p); p.pats = pList(p); delete p.pat;
-    if (chipKind(x) === 'fmt' && p.fmt.id === 'none') p.fmt = fmtCopy(x); else p.pats.push(patFrom(x, ''));
+    let at = 0; p.moves.forEach((m, j) => { if (m.n.trim()) at = j + 1; });
+    if (chipKind(x) === 'fmt' && p.fmt.id === 'none') { p.fmt = fmtCopy(x); p.fmtAt = at; } else p.pats.push({...patFrom(x, ''), at});
     if (partRes(p) !== before) p.res = {}; closeSheet(); render(true);
-    if (hasN(x)) { const b = document.querySelectorAll(`[data-patv="${pi}"][data-i="${i}"]`); b[b.length - 1]?.focus(); } else toast(`${x.label}을(를) 넣었어요`); },
+    if (hasN(x)) { const b = document.querySelector(`[data-patv="${pi}"][data-pk="${p.pats.length - 1}"][data-i="${i}"]`); b?.focus(); } },
+  'cfg-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], before = partRes(p); p.pats = pList(p); delete p.pat;
+    if (el.dataset.kind === 'fmt') { const k = p.pats.findIndex(y => state.formats.some(f => f.id === y.t)); if (k >= 0) { p.fmt = fmtCopy(chipById(p.pats[k].t)); p.fmtAt = p.pats[k].at || 0; p.pats.splice(k, 1); } else { p.fmt = {...NO_FMT}; delete p.fmtAt; } }
+    else p.pats.splice(+el.dataset.k, 1);
+    if (partRes(p) !== before) p.res = {}; render(true); },
   'pat-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.pats = pList(p).filter((_, k) => k !== +el.dataset.pk); delete p.pat; render(true); },
   'rm-new': el => { ui.confirm = null; const c = rmNow(exById(el.dataset.id) || {}); ui.rmEdit = {id:el.dataset.id, v:'', u:c?.u || U(), date:TODAY()}; refreshSheet(); $('#sheet [data-rm=v]')?.focus(); },
   'rm-edit': el => { ui.confirm = null; const r = rmList(exById(el.dataset.id))[+el.dataset.k]; if (!r) return; ui.rmEdit = {id:el.dataset.id, k:+el.dataset.k, ref:{...r}, v:r.v, u:r.u, date:r.date}; refreshSheet(); },
@@ -1320,7 +1328,7 @@ const A = {
     if (j + d >= 0 && j + d < p.moves.length) { p.moves.splice(j, 1); p.moves.splice(j + d, 0, m); }
     else { const q = it.parts[pi + d]; if (!q) return; p.moves.splice(j, 1); if (d < 0) q.moves.push(m); else q.moves.unshift(m); if (!p.moves.length) p.moves.push(blankMove()); }
     render(true); },
-  'mv-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.moves.splice(+el.dataset.j, 1); if (!p.moves.length) p.moves.push(blankMove()); render(true); },
+  'mv-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], j = +el.dataset.j; p.moves.splice(j, 1); pList(p).forEach(x => { if ((x.at || 0) > j) x.at--; }); if ((p.fmtAt || 0) > j) p.fmtAt--; if (!p.moves.length) p.moves.push(blankMove()); render(true); },
   'mv-pick': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], m = p.moves[+el.dataset.j], ex = exById(el.dataset.id); if (ex) { m.n = ex.name; m.exId = ex.id; if (isSetPart(p)) fillMoveSets(m, ui.draft?.date); } render(true); },
   'mv-new': el => { const box = $(`#sug-${el.dataset.i}-${el.dataset.pi}-${el.dataset.j}`); if (box) box.innerHTML = ''; toast('저장하면 새 운동으로 추가돼요'); },
   'ms-field': el => { const m = curItems()[+el.dataset.i].parts[+el.dataset.pi].moves[+el.dataset.j], k = el.dataset.f; m.fields = m.fields.includes(k) ? m.fields.filter(x => x !== k) : Object.keys(FIELDS).filter(x => x === k || m.fields.includes(x)); render(true); },
@@ -1523,7 +1531,7 @@ document.addEventListener('input', e => {
   if (ds.f && ds.s !== undefined) { ui.draft.items[+ds.i].sets[+ds.s][ds.f] = t.value; return; }
   if (ds.ms !== undefined) { curItems()[+ds.msi].parts[+ds.mpi].moves[+ds.mj].sets[+ds.ms][ds.mf] = t.value; return; }
   if (ds.mv !== undefined) { const m = curItems()[+ds.i].parts[+ds.pi].moves[+ds.mv]; if (ds.k === 'w') { const u = mvUnit(m); m.w = /(kg|lb)$/i.test(t.value.trim()) ? t.value : t.value.trim() ? t.value.trim() + u : ''; m.u = u; updateSum(ds.i); return; } m[ds.k] = t.value; if (ds.k === 'n') { m.exId = null; showSug(t, ds); } return; }
-  if (ds.patv !== undefined) { const p = curItems()[+ds.i].parts[+ds.patv]; pList(p)[+ds.pk].v = t.value.trim(); const sc = schemeOfP(p); document.querySelectorAll(`input.q[data-i="${ds.i}"][data-pi="${ds.patv}"]`).forEach(q => q.placeholder = sc || '10'); return; }
+  if (ds.patv !== undefined) { const p = curItems()[+ds.i].parts[+ds.patv]; pList(p)[+ds.pk].v = t.value.trim(); const sc = schemeOfP(p); document.querySelectorAll(`input.q[data-i="${ds.i}"][data-pi="${ds.patv}"]`).forEach(q => q.placeholder = schemeAt(p, +q.dataset.mv) || '10'); return; }
   if (ds.framepv !== undefined) { ui.frame.pats[+ds.framepv].v = t.value.trim(); return; }
   if (ds.tabl !== undefined) { const x = state.wodTabs.find(y => y.k === ds.tabl); if (x) { x.label = t.value.trim() || x.label; save(); const b = document.querySelector(`[data-action=wod-tab][data-v="${ds.tabl}"]`); if (b) b.textContent = x.label; } return; }
   if (ds.wn !== undefined) { curItems()[+ds.wn].name = t.value; return; }
