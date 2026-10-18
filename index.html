@@ -80,6 +80,9 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .dow span{text-align:center;font-size:11px;color:var(--mut);padding-bottom:4px}
 .dow span:first-child{color:var(--red)}
 .wk{margin-top:4px}
+.cal.wvol .dow,.cal.wvol .wk{grid-template-columns:repeat(7,minmax(0,1fr)) 34px}
+.wk .wv{align-self:center;text-align:right;font-family:var(--num);font-weight:700;font-size:12.5px;color:var(--ink);white-space:nowrap}
+.dow .wv{text-align:right;font-size:10px}
 .dc{height:56px;min-width:0;border-radius:10px;background:#141414;border:0;padding:5px 4px;display:flex;flex-direction:column;gap:3px;position:relative;text-align:left;-webkit-touch-callout:none}
 .dc .d{font-family:var(--num);font-weight:700;font-size:15px;color:#cfcfcf;line-height:1}
 .dc.sun .d{color:var(--red)}
@@ -163,6 +166,21 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .guide .gdots i{width:7px;height:7px;border-radius:9px;background:#333}
 .guide .gdots i.on{background:var(--lime);width:20px}
 .guide .gbtn{flex:none;margin:0 20px;width:auto;box-sizing:border-box}
+.vchart{display:flex;align-items:flex-end;gap:6px;height:140px}
+.vchart button{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;background:none;border:0;padding:0}
+.vchart .b{width:100%;border-radius:6px 6px 3px 3px;background:#3a3a3a}
+.vchart .on .b{background:var(--lime)}
+.vchart .l{font-size:10.5px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+.vchart .on .l{color:var(--lime);font-weight:700}
+.vchart .v{font-family:var(--num);font-weight:700;font-size:13px}
+.vrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.vrow:first-child{border-top:0}
+.vrow i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle}
+.vrow .vtrack{flex:0 0 80px;height:8px;border-radius:4px;background:#262626;overflow:hidden;display:flex}
+.vrow .n{font-size:18px;min-width:56px;text-align:right}
+.cvol{border-top:1px solid rgba(0,0,0,.15);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.cvol .li{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;border-top:1px solid rgba(0,0,0,.12);font-weight:500}
+.cvol .li:first-child{border-top:0}
 .wsum{font-weight:500;line-height:1.55;padding:10px 0;border-top:1px solid rgba(0,0,0,.15);border-bottom:1px solid rgba(0,0,0,.15)}
 .wsum .sh{font-weight:800;margin-top:6px}
 .wsum .sh:first-child{margin-top:0}
@@ -189,7 +207,7 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 /* WOD card: frame (format + pattern chips) then exercise rows */
 .wc{display:flex;flex-direction:column;gap:10px}
 .part{display:flex;flex-direction:column;gap:8px}
-.part + .part{margin-top:18px;padding-top:20px;border-top:2px solid #2c2c2c}
+.part + .part{margin-top:22px;padding-top:22px;border-top:3px solid #5a5a5a}
 .lbl{font-size:12px;color:var(--mut);font-weight:700}
 .frame{background:#000;border:1px solid #2c2c2c;border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px}
 .chips2{display:flex;gap:6px;flex-wrap:wrap}
@@ -621,6 +639,36 @@ function series(exId) {
   for (const s of sorted()) { let b = 0; for (const it of s.items) { if (it.type === 'ex' && it.exId === exId) for (const x of it.sets) b = Math.max(b, conv(e1rm(+x.w, +x.r), wuOf(it), U())); if (it.type === 'wod') for (const m of wodMoves(it)) if (m.exId === exId && m.sets) for (const x of m.sets) b = Math.max(b, conv(e1rm(+x.w, +x.r), m.u || 'kg', U())); } if (b) pts.push({date:s.date, v:Math.round(b*10)/10}); }
   return pts;
 }
+/* volume = weight x reps, added up in the chosen unit; moves without a weight count as reps, distances as km */
+const repsIn = q => { q = String(q || '').trim().replace(/\s*회$/, ''); let m;
+  if (/^\d+$/.test(q)) return +q;
+  if (/^\d+(\s*-\s*\d+)+$/.test(q)) return q.split('-').reduce((a, x) => a + +x, 0);
+  if ((m = q.match(/^(\d+)\s*[x×*]\s*(\d+)$/i))) return m[1] * m[2];
+  return 0; };
+const kmIn = q => { const m = String(q || '').trim().match(/^([\d.]+)\s*(km|m)$/i); return m ? (m[2].toLowerCase() === 'm' ? m[1] / 1000 : +m[1]) : 0; };
+const wIn = m => { const x = String(m.w || '').match(/[\d.]+/); return x ? conv(+x[0], mvUnit(m), U()) : 0; };
+function volOfItem(it) {
+  const v = {kg:0, reps:0, km:0, by:{}}, add = (name, kg) => { v.kg += kg; if (name) v.by[name] = (v.by[name] || 0) + kg; };
+  const sets = (name, list, fields, u, unit) => { for (const x of list || []) { const w = +x.w || 0, r = +x.r || 0;
+    if (w && r && fields.includes('w')) add(name, conv(w * r, u, U())); else if (r) v.reps += r;
+    if (x.d) v.km += unit === 'm' ? x.d / 1000 : +x.d || 0; } };
+  if (it.type === 'ex') { const ex = exById(it.exId) || {name:'', unit:'km'}; sets(ex.name, it.sets, it.fields || [], wuOf(it), ex.unit); return v; }
+  for (const p of it.parts || []) {
+    const rr = partRes(p) === 'rr' || (it.parts.length === 1 && resType(it) === 'rr'), rv = String((it.parts.length > 1 ? p.res?.v : it.res?.v) || '');
+    const rounds = pList(p).filter(x => x.t === 'rounds' && +x.v).reduce((a, x) => a * +x.v, 1) * (rr && /^\d+/.test(rv) ? +rv.match(/^\d+/)[0] : 1);
+    p.moves.forEach((m, j) => { const name = (m.n || '').trim(); if (!name) return;
+      if (m.sets?.length) return sets(name, m.sets, m.fields || ['w', 'r'], m.u || 'kg', mvEx(m)?.unit);
+      const r = repsIn(m.q) || (m.q ? 0 : repsIn(schemeAt(p, j))), w = wIn(m);
+      if (r && w) add(name, r * w * rounds); else if (r) v.reps += r * rounds; else v.km += kmIn(m.q) * rounds; });
+  }
+  return v;
+}
+const volSum = list => list.reduce((a, b) => ({kg:a.kg + b.kg, reps:a.reps + b.reps, km:a.km + b.km}), {kg:0, reps:0, km:0});
+const volOfSession = s => volSum(s.items.map(volOfItem));
+const volBetween = (from, to) => volSum(state.sessions.filter(s => s.date >= from && s.date <= to).map(volOfSession));
+const kgTxt = v => Math.round(v).toLocaleString('en-US');
+const kgShort = v => v >= 1000 ? `${Math.round(v / 100) / 10}${U() === 'kg' ? 't' : 'k'}` : `${Math.round(v)}`;
+const kmTxt = v => `${Math.round(v * 10) / 10}km`;
 function weekStats() {
   const days = new Set(state.sessions.map(s => s.date)), mon = mondayOf(new Date());
   const cnt = start => { let c = 0; for (let i = 0; i < 7; i++) if (days.has(ymd(addDays(start, i)))) c++; return c; };
@@ -657,11 +705,11 @@ function render(keep) {
 /* usage guide: example screenshots shown on the very first launch and again from 돌아보기 */
 const GUIDE_KEY = 'setlog-guide-seen';
 const GUIDE = [
-  ['캘린더', '날짜를 누르면 그날 기록이 보여요. 칸 아래 색 막대는 기록, 테두리만 있는 건 계획이에요.'],
+  ['캘린더', '날짜를 누르면 그날 기록과 볼륨이 보여요. 색 막대는 기록, 테두리만 있는 건 계획, 오른쪽 숫자는 그 주 볼륨이에요.'],
   ['기록하기', '+ 구성에서 세트를 넣으면 운동마다 세트별 무게와 횟수를 적어요. 지난 무게가 미리 채워져요.'],
   ['WOD 기록', '+ 구성을 누를 때마다 For Time, 21-15-9 같은 줄이 하나씩 쌓여요. + 구간은 A, B로 나눠 기록해요.'],
   ['WOD 모음', '네임드 WOD와 내가 만든 WOD를 저장해 두고 바로 불러와요. 네임드 WOD도 직접 추가할 수 있어요.'],
-  ['돌아보기', '주간 목표 연속 기록과 최근 12주, WOD 최고 기록을 봐요. 예상 1RM은 운동목록에서 운동을 누르면 나와요.']
+  ['돌아보기', '주간 목표 연속 기록과 주·달 볼륨, 최근 12주를 봐요. 예상 1RM은 운동목록에서 운동을 누르면 나와요.']
 ];
 function showGuide() {
   const g = $('#guide');
@@ -681,15 +729,16 @@ function viewCal() {
   const [vy, vm] = ui.month.split('-').map(Number), wk = weekStats(), t = TODAY();
   let body = '';
   if (ui.view === 'month') {
-    const first = new Date(vy, vm - 1, 1), start = addDays(first, -first.getDay()), rows = Math.ceil((first.getDay() + new Date(vy, vm, 0).getDate()) / 7);
+    const wv = state.weekVol !== false, first = new Date(vy, vm - 1, 1), start = addDays(first, -first.getDay()), rows = Math.ceil((first.getDay() + new Date(vy, vm, 0).getDate()) / 7);
     let h = '';
     for (let r = 0; r < rows; r++) { h += '<div class="wk">';
       for (let c = 0; c < 7; c++) { const d = addDays(start, r*7 + c), ds = ymd(d), ev = entriesOn(ds), mood = sessionsOn(ds)[0]?.mood;
         h += `<button class="dc ${d.getMonth() !== vm - 1 ? 'out' : ''} ${c === 0 ? 'sun' : ''} ${ds === t ? 'today' : ''} ${ds === ui.sel ? 'sel' : ''}" data-date="${ds}" aria-label="${dayLabel(ds)} ${ev.length ? ev.map(e => e.title).join(', ') : '기록 없음'}">
           <span class="d">${d.getDate()}</span>${mood ? `<span class="s">${mood}</span>` : ''}
           ${ev.slice(0, 2).map(e => `<span class="b ${e.kind === 'p' ? 'plan' : ''}" style="${e.kind === 'p' ? 'border-color' : 'background'}:${catOf(e.cat).color}"></span>`).join('')}</button>`; }
+      if (wv) { const v = volBetween(ymd(addDays(start, r*7)), ymd(addDays(start, r*7 + 6))); h += `<span class="wv">${v.kg ? kgShort(v.kg) : v.km ? kmTxt(v.km) : ''}</span>`; }
       h += '</div>'; }
-    body = `<div class="cal" id="cal"><div class="dow">${WD.map(w => `<span>${w}</span>`).join('')}</div>${h}</div>`;
+    body = `<div class="cal ${wv ? 'wvol' : ''}" id="cal"><div class="dow">${WD.map(w => `<span>${w}</span>`).join('')}${wv ? '<span class="wv">볼륨</span>' : ''}</div>${h}</div>`;
   } else if (ui.view === 'week') {
     const s = parseYmd(ui.sel), ws = addDays(s, -s.getDay());
     body = `<div class="card list cal" id="cal" style="padding:6px 16px">${Array.from({length:7}, (_, i) => { const d = addDays(ws, i), ds = ymd(d), ev = entriesOn(ds);
@@ -723,13 +772,43 @@ function entryRow(e, ds) {
 }
 
 /* day view */
+/* the whole day's volume, split by record */
+/* 돌아보기: volume by week (last 8, Monday start) or by month (last 6); a bar can be picked to see its split */
+function volPeriods(mode) { const now = new Date(), out = [];
+  if (mode === 'm') for (let k = 5; k >= 0; k--) { const a = new Date(now.getFullYear(), now.getMonth() - k, 1), b = new Date(a.getFullYear(), a.getMonth() + 1, 0); out.push({from:ymd(a), to:ymd(b), label:`${a.getMonth() + 1}월`, now:!k}); }
+  else for (let k = 7; k >= 0; k--) { const a = addDays(mondayOf(now), -7 * k); out.push({from:ymd(a), to:ymd(addDays(a, 6)), label:k ? md(ymd(a)) : '이번 주', now:!k}); }
+  return out.map(p => { const ss = state.sessions.filter(s => s.date >= p.from && s.date <= p.to); return {...p, ss, v:volSum(ss.map(volOfSession))}; }); }
+function volCardHtml() {
+  const mode = ui.volMode || 'w', ps = volPeriods(mode), k = ui.volSel ?? ps.length - 1, sel = ps[Math.min(k, ps.length - 1)], prev = ps[ps.indexOf(sel) - 1];
+  const max = Math.max(...ps.map(p => p.v.kg), 1), big = mode === 'm' && sel.v.kg >= 10000;
+  const byCat = {}; for (const s of sel.ss) { const c = sessionCat(s), v = volOfSession(s); byCat[c] = byCat[c] || {kg:0, km:0, reps:0}; byCat[c].kg += v.kg; byCat[c].km += v.km; byCat[c].reps += v.reps; }
+  const pct = prev?.v.kg ? Math.round((sel.v.kg - prev.v.kg) / prev.v.kg * 100) : null;
+  return `<div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="row between"><b>볼륨</b><div class="row" style="gap:4px">${[['w','주'],['m','달']].map(([v, l]) => `<button class="pill" aria-pressed="${mode === v}" data-action="vol-mode" data-v="${v}">${l}</button>`).join('')}</div></div>
+    <div class="row" style="align-items:flex-end"><span class="n" style="font-size:52px">${big ? Math.round(sel.v.kg / 100) / 10 : kgTxt(sel.v.kg)}</span><span class="unit">${big ? (U() === 'kg' ? '톤' : 'K LB') : U().toUpperCase()} ${sel.now ? (mode === 'm' ? '이번 달' : '이번 주') : sel.label}</span></div>
+    <div class="sub">${pct !== null ? `${mode === 'm' ? '지난달' : '지난주'}보다 <b style="color:var(--lime)">${pct >= 0 ? '+' : ''}${pct}%</b> · ` : ''}운동 ${sel.ss.length}번</div>
+    <div class="vchart">${ps.map((p, n) => `<button class="${p === sel ? 'on' : ''}" data-action="vol-pick" data-v="${n}" aria-label="${p.label} 볼륨 ${kgTxt(p.v.kg)}${U()}">${p === sel ? `<span class="v">${kgShort(p.v.kg)}</span>` : ''}<span class="b" style="height:${Math.max(2, Math.round(p.v.kg / max * 100))}%"></span><span class="l">${p.label}</span></button>`).join('')}</div>
+    ${Object.keys(byCat).length ? `<div>${Object.entries(byCat).sort((a, b) => b[1].kg - a[1].kg).map(([c, v]) => `<div class="vrow"><span class="grow"><i style="background:${catOf(c).color}"></i>${esc(catOf(c).label)}</span>${v.kg ? `<span class="n">${kgTxt(v.kg)}</span>` : `<span class="sub">${[v.km ? kmTxt(v.km) : '', v.reps ? v.reps + '회' : ''].filter(Boolean).join(' · ') || '-'}</span>`}</div>`).join('')}</div>` : '<div class="empty">이 기간에는 기록이 없어요.</div>'}
+    <div class="sub" style="font-size:11.5px">무게 × 횟수를 모두 더해요. 무게 없는 운동은 횟수, 달리기는 거리로 따로 세요.</div></div>`;
+}
+function dayVolHtml(ds, list) {
+  const rows = list.map(s => ({s, v:volOfSession(s)})), t = volSum(rows.map(r => r.v)), dur = list.reduce((a, s) => a + (+s.duration || 0), 0);
+  if (!t.kg && !t.reps && !t.km) return '';
+  const wk = ymd(addDays(parseYmd(ds), -7)), last = volBetween(wk, wk).kg, d = t.kg - last, max = Math.max(...rows.map(r => r.v.kg), 1);
+  const pills = [t.km ? `거리 ${kmTxt(t.km)}` : '', dur ? `운동 시간 ${dur}분` : '', t.reps ? `맨몸 ${t.reps}회` : ''].filter(Boolean);
+  return `<div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="row between"><b>그날 볼륨</b>${last && t.kg ? `<span class="sub" style="font-size:12px">지난주 ${WD[parseYmd(ds).getDay()]}요일보다 <b style="color:var(--lime)">${d >= 0 ? '+' : '−'}${kgTxt(Math.abs(d))}${U()}</b></span>` : ''}</div>
+    ${t.kg ? `<div class="row" style="align-items:flex-end"><span class="n" style="font-size:56px;color:var(--lime)">${kgTxt(t.kg)}</span><span class="unit">${U().toUpperCase()}</span></div>` : ''}
+    ${pills.length ? `<div class="row wrap" style="gap:6px">${pills.map(p => `<span class="pill">${p}</span>`).join('')}</div>` : ''}
+    ${rows.length > 1 ? `<div>${rows.map(({s, v}) => `<div class="vrow"><span class="grow"><i style="background:${catOf(sessionCat(s)).color}"></i>${esc(s.title || '운동')}</span>${v.kg ? `<span class="vtrack"><span style="width:${Math.round(v.kg / max * 100)}%;background:${catOf(sessionCat(s)).color}"></span></span><span class="n">${kgTxt(v.kg)}</span>` : `<span class="sub">${[v.km ? kmTxt(v.km) : '', v.reps ? v.reps + '회' : ''].filter(Boolean).join(' · ')}</span>`}</div>`).join('')}</div>` : ''}</div>`;
+}
 function pageDay() {
   const ds = ui.dayDate, list = sessionsOn(ds);
   const dates = [...new Set(sorted().map(s => s.date))], i = dates.indexOf(ds);
   const prev = dates[i - 1], next = dates[i + 1];
   if (!list.length) return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button></div><div class="empty">이날은 기록이 없어요.</div>`;
   return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button><div class="row" style="gap:4px"><button class="icon" data-action="day-nav" data-v="${prev || ''}" ${prev ? '' : 'disabled style="opacity:.25"'} aria-label="이전 기록">‹</button><span class="eb">${md(ds)} ${WD[parseYmd(ds).getDay()]}</span><button class="icon" data-action="day-nav" data-v="${next || ''}" ${next ? '' : 'disabled style="opacity:.25"'} aria-label="다음 기록">›</button></div><span style="width:70px"></span></div>
-  <div id="daySwipe" style="touch-action:pan-y;display:flex;flex-direction:column;gap:16px">${list.map(s => {
+  <div id="daySwipe" style="touch-action:pan-y;display:flex;flex-direction:column;gap:16px">${dayVolHtml(ds, list)}${list.map(s => {
     const plan = state.plans.find(p => p.id === s.planId);
     let hero = null;
     for (const it of s.items) { if (it.type === 'ex') { const b = bestSet(it); if (b && (!hero || b.v > hero.v)) hero = {...b, name:exById(it.exId)?.name, exId:it.exId}; } }
@@ -862,7 +941,14 @@ function wodSum(it) {
     const any = p.moves.some(m => m.n.trim()), ms = partFlow(p, t => `<div class="sh">${esc(t)}</div>`, (m, j) => m.n.trim() ? `<div>${esc([m.q ? qTxt(m.q) : schemeAt(p, j), m.n.trim(), m.w].filter(Boolean).join(' '))}</div>` : '');
     return `${head ? `<div class="sh">${esc(head)}</div>` : ''}${ms}${any ? '' : '<div style="opacity:.5">운동을 적으면 여기에 보여요</div>'}`; }).join('');
 }
-function updateSum(i) { const el = document.getElementById(`wsum-${i}`), it = curItems()?.[+i]; if (el && it?.type === 'wod') el.innerHTML = wodSum(it); const pv = document.querySelector(`[data-respv="${i}"]`); if (pv && it?.type === 'wod') pv.textContent = wodResult(it) || '-'; }
+function updateSum(i) { const el = document.getElementById(`wsum-${i}`), it = curItems()?.[+i]; const vb = document.getElementById(`wvol-${i}`); if (vb && it?.type === 'wod') vb.innerHTML = cardVolHtml(it); if (el && it?.type === 'wod') el.innerHTML = wodSum(it); const pv = document.querySelector(`[data-respv="${i}"]`); if (pv && it?.type === 'wod') pv.textContent = wodResult(it) || '-'; }
+/* the card's own volume, under its result */
+function cardVolHtml(it) { const v = volOfItem(it), by = Object.entries(v.by).sort((a, b) => b[1] - a[1]);
+  if (!v.kg && !v.reps && !v.km) return '';
+  const extra = [v.reps ? `맨몸 ${v.reps}회` : '', v.km ? kmTxt(v.km) : ''].filter(Boolean).join(' · ');
+  return `<div class="cvol"><div class="row between"><span class="eb" style="font-weight:700">이 카드 볼륨</span>${extra ? `<span class="eb" style="font-weight:700">${extra}</span>` : ''}</div>
+    ${v.kg ? `<div class="row" style="align-items:flex-end"><span class="n" style="font-size:48px">${kgTxt(v.kg)}</span><span class="unit" style="color:var(--lime-sub)">${U().toUpperCase()}</span></div>
+    ${by.length > 1 ? `<div>${by.map(([n, kg]) => `<div class="li"><span>${esc(n)}</span><span class="n" style="font-size:19px">${kgTxt(kg)}</span></div>`).join('')}</div>` : ''}` : ''}</div>`; }
 function wodResultBox(it, i) {
   const type = resType(it), b = bestWod(it.wodId, ui.draft?.id), st = it.res?.status || '';
   const on = 'background:#000;color:var(--lime);border-color:#000;font-weight:700', off = 'border-color:#000;color:#000';
@@ -873,6 +959,7 @@ function wodResultBox(it, i) {
       <div class="row" style="gap:6px">${[['', '기록'], ['DNF', 'DNF'], ['DONE', 'DONE']].map(([v, l]) => `<button class="pill" style="${st === v ? on : off}" data-action="res-status" data-i="${i}" data-v="${v}">${l}</button>`).join('')}</div>
       ${st === 'DNF' ? `<div class="res"><label>못 채운 렙 (−)<input data-i="${i}" data-res="short" inputmode="numeric" value="${esc(String(it.res?.short ?? '').replace(/^-/, ''))}" placeholder="6"></label></div>` : ''}
       ${type === 'done' && !st ? '<div class="sub" style="font-weight:500">다 했으면 DONE, 못 채웠으면 DNF를 눌러요</div>' : `<div class="res"><label>${st === 'DNF' ? '적고 싶을 때만' : RES_TYPES[type].label}${resInput(`data-i="${i}" data-res="v" class="${type === 'text' ? 'txt' : ''}"`, it.res?.v, type)}</label></div>`}
+      <div id="wvol-${i}">${cardVolHtml(it)}</div>
       <div class="sub" style="font-weight:500">결과: <b data-respv="${i}">${esc(wodResult(it) || '-')}</b></div>
       ${it.wodId ? b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 WOD의 첫 기록이에요</div>' : ''}
     </div>`;
@@ -1035,6 +1122,7 @@ function viewStats() {
   <div class="hero"><div class="row between"><span class="eb" style="font-weight:700">주간 목표 연속 달성</span><span class="eb" style="font-weight:700">주 ${state.goal}회 · 이번 주 ${wk.count}회</span></div>
     <div class="row" style="align-items:flex-end"><span class="n" style="font-size:104px">${wk.streak}</span><span class="disp" style="font-size:30px;padding:0 0 10px 6px">주째</span></div>
     <div class="sub" style="font-weight:500">최근 4주 계획 지킴 ${keep.rate}% · ${keep.due - keep.kept ? `놓친 계획 ${keep.due - keep.kept}개` : '놓친 계획 없음'}</div></div>
+  ${volCardHtml()}
   <div class="card"><div class="row between" style="margin-bottom:10px"><b>최근 12주</b><span class="sub" style="font-size:12px">칸을 누르면 그날 기록</span></div><div class="heat">${heat}</div><div class="hlab">${[0, 4, 8].map(w => `<span style="grid-column:${w + 1} / span 2">${md(ymd(addDays(start, 7*w)))}~</span>`).join('')}<span>이번 주 ▲</span></div></div>
   ${wods.length ? `<div class="card list" style="padding:4px 18px">${wods.map(({w, b}) => `<button class="it" data-action="wod-detail" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:20px"></span><span class="grow t">${esc(w.name)}</span><span class="n" style="font-size:24px">${esc(b.txt)}</span></button>`).join('')}</div>` : ''}
   <div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="row between"><b>테마 색</b><span class="sub" style="font-size:12px">${theme().label}</span></div>
@@ -1081,6 +1169,7 @@ function sheetCatFilter() {
     <div class="row between"><span class="eb">카테고리</span><button class="pill" data-action="cats-edit">편집</button></div>
     <div class="card list" style="padding:2px 16px">${cats().map(c => `<label class="cat-row"><input type="checkbox" data-catf="${c.k}" ${ui.hidden.includes(c.k) ? '' : 'checked'}><span class="bar" style="background:${c.color};height:16px"></span><span class="grow">${c.label}</span></label>`).join('')}</div>
     <div class="card row between"><span>무게 단위</span><span class="unitsw">${['kg','lb'].map(u => `<button aria-pressed="${U() === u}" data-action="unit" data-v="${u}">${u}</button>`).join('')}</span></div>
+    <div class="card row between"><span>주별 볼륨 표시</span><span class="unitsw">${[['on','켜기'],['off','끄기']].map(([v, l]) => `<button aria-pressed="${(state.weekVol !== false) === (v === 'on')}" data-action="week-vol" data-v="${v}">${l}</button>`).join('')}</span></div>
     <div class="card row between"><span>주간 목표</span><div class="row" style="gap:10px"><button class="circle" data-action="goal" data-v="-1" aria-label="줄이기">−</button><span class="n" style="font-size:30px">${state.goal}</span><button class="circle" data-action="goal" data-v="1" aria-label="늘리기">+</button></div></div>
     <button class="btn lime" data-action="close-sheet">확인</button>`);
 }
@@ -1261,6 +1350,7 @@ const A = {
   'close-sheet': () => closeSheet(),
   'close-page': () => { ui.page = null; ui.confirm = null; render(); },
   'cat-filter': () => sheetCatFilter(),
+  'week-vol': el => { state.weekVol = el.dataset.v === 'on'; save(); render(true); refreshSheet(); },
   goal: el => { state.goal = Math.min(7, Math.max(1, state.goal + +el.dataset.v)); save(); render(true); refreshSheet(); },
   view: el => { ui.view = el.dataset.v; render(true); },
   month: el => shiftMonth(+el.dataset.v),
@@ -1276,6 +1366,8 @@ const A = {
   'day-nav': el => { if (el.dataset.v) { ui.dayDate = el.dataset.v; render(); } },
   'edit-session': el => openEditor(JSON.parse(JSON.stringify(state.sessions.find(s => s.id === el.dataset.id)))),
   'del-session': el => { const k = 'del-' + el.dataset.id; if (ui.confirm !== k) { ui.confirm = k; return render(true); } state.sessions = state.sessions.filter(s => s.id !== el.dataset.id); save(); ui.confirm = null; if (!sessionsOn(ui.dayDate).length) ui.page = null; render(); toast('기록을 삭제했어요'); },
+  'vol-mode': el => { ui.volMode = el.dataset.v; ui.volSel = null; render(true); },
+  'vol-pick': el => { ui.volSel = +el.dataset.v; render(true); },
   'stat-ex-go': el => sheetExHistory(el.dataset.v),
   // editor
   'cancel-edit': () => { const dirty = ui.draft.items.some(it => !isBlankCard(it)) || ui.draft.memo || ui.draft.title; if (dirty && !ui.draft.id && ui.confirm !== 'cancel') { ui.confirm = 'cancel'; return render(true); } ui.page = ui.draft.id ? 'day' : null; ui.confirm = null; ui.grouping = false; ui.frEdit = false; render(); },
@@ -1495,7 +1587,7 @@ const A = {
   },
   'del-ex': () => { if (ui.confirm !== 'del-ex') { ui.confirm = 'del-ex'; return refreshSheet(); } state.exercises = state.exercises.filter(e => e.id !== ui.exd.id); save(); ui.confirm = null; closeSheet(); render(true); toast('운동을 삭제했어요'); },
   // stats
-  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, exCats:state.exCats, formats:state.formats, patterns:state.patterns, theme:state.theme}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
+  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, weekVol:state.weekVol, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, exCats:state.exCats, formats:state.formats, patterns:state.patterns, theme:state.theme}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
   export: () => {
     const blob = new Blob([JSON.stringify({app:'setlog', v:1, saved:new Date().toISOString(), state}, null, 1)], {type:'application/json'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `setlog-backup-${TODAY()}.json`; document.body.appendChild(a); a.click(); a.remove();
