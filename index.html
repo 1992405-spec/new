@@ -752,17 +752,12 @@ function exEditCard(it, i) {
 const findEx = name => state.exercises.find(e => exIs(e, name));
 /* WOD card: each part is a frame (format + pattern) followed by its exercises; a frame can be inserted between exercises */
 function usage() { const c = {}; for (const s of state.sessions) for (const it of s.items) { if (it.type === 'ex') c[it.exId] = (c[it.exId] || 0) + 1; else wodMoves(it).forEach(m => { if (m.exId) c[m.exId] = (c[m.exId] || 0) + 1; }); } return c; }
-function fmtChips(i, pi, p) {
-  const ed = ui.frEdit;
-  return `<div class="chips2">${state.formats.map(f => ed ? `<button class="c2" data-action="fr-edit" data-kind="fmt" data-id="${f.id}">${esc(f.label)}<span class="x" data-action="fr-del" data-kind="fmt" data-id="${f.id}" role="button" aria-label="${esc(f.label)} 삭제">✕</span></button>`
-      : `<button class="c2 ${p.fmt.id === f.id ? 'on' : ''}" data-action="set-fmt" data-i="${i}" data-pi="${pi}" data-v="${f.id}" data-lp="fmt:${f.id}">${esc(f.label)}</button>`).join('')}${ed ? '<button class="c2 add" data-action="fr-edit" data-kind="fmt">+ 추가</button>' : `<button class="c2 ${p.fmt.id === 'none' ? 'on' : ''}" data-action="set-fmt" data-i="${i}" data-pi="${pi}" data-v="none">없음</button>`}</div>`;
-}
-function patChips(i, pi, p) {
+/* one chip row: formats (pick one) and patterns (pick several); a pattern with N shows its number box below */
+function frameChips(i, pi, p) {
   const ed = ui.frEdit, ps = pList(p), on = t => ps.some(x => x.t === t.id);
-  return `<div class="chips2">${state.patterns.map(t => ed ? `<button class="c2" data-action="fr-edit" data-kind="pat" data-id="${t.id}">${esc(patShape(t))}<span class="x" data-action="fr-del" data-kind="pat" data-id="${t.id}" role="button" aria-label="${esc(t.label)} 삭제">✕</span></button>`
-      : `<button class="c2 ${on(t) ? 'val' : ''}" data-action="set-pat" data-i="${i}" data-pi="${pi}" data-v="${t.id}" data-lp="pat:${t.id}">${esc(patShape(t))}</button>`).join('')}${ed ? '<button class="c2 add" data-action="fr-edit" data-kind="pat">+ 추가</button>' : `<button class="c2 ${ps.length ? '' : 'val'}" data-action="set-pat" data-i="${i}" data-pi="${pi}" data-v="">패턴 없음</button>`}</div>
-    ${ed ? '' : ps.map((x, k) => { const t = state.patterns.find(y => y.id === x.t) || x; return patInput(t, x.v, `data-patv="${pi}" data-pk="${k}" data-i="${i}"`) + recentPat(t, `data-action="set-patv" data-i="${i}" data-pi="${pi}" data-pk="${k}"`); }).join('')}
-    ${ps.length > 1 && !ed ? '<div class="sub" style="font-size:12px">패턴은 여러 개 고를 수 있어요. 다시 누르면 빠져요.</div>' : ''}`;
+  if (ed) return `<div class="chips2">${state.formats.map(f => `<button class="c2" data-action="fr-edit" data-kind="fmt" data-id="${f.id}">${esc(f.label)}<span class="x" data-action="fr-del" data-kind="fmt" data-id="${f.id}" role="button" aria-label="${esc(f.label)} 삭제">✕</span></button>`).join('')}${state.patterns.map(t => `<button class="c2" data-action="fr-edit" data-kind="pat" data-id="${t.id}">${esc(patShape(t))}<span class="x" data-action="fr-del" data-kind="pat" data-id="${t.id}" role="button" aria-label="${esc(t.label)} 삭제">✕</span></button>`).join('')}<button class="c2 add" data-action="fr-edit" data-kind="fmt">+ 방식</button><button class="c2 add" data-action="fr-edit" data-kind="pat">+ 패턴</button></div>`;
+  return `<div class="chips2">${state.formats.map(f => `<button class="c2 ${p.fmt.id === f.id ? 'on' : ''}" data-action="set-fmt" data-i="${i}" data-pi="${pi}" data-v="${f.id}" data-lp="fmt:${f.id}">${esc(f.label)}</button>`).join('')}${state.patterns.map(t => `<button class="c2 ${on(t) ? 'val' : ''}" data-action="set-pat" data-i="${i}" data-pi="${pi}" data-v="${t.id}" data-lp="pat:${t.id}">${esc(patShape(t))}</button>`).join('')}<button class="c2 ${p.fmt.id === 'none' && !ps.length ? 'on' : ''}" data-action="set-fmt" data-i="${i}" data-pi="${pi}" data-v="none">없음</button></div>
+    ${ps.map((x, k) => { const t = state.patterns.find(y => y.id === x.t) || x; return patInput(t, x.v, `data-patv="${pi}" data-pk="${k}" data-i="${i}"`) + recentPat(t, `data-action="set-patv" data-i="${i}" data-pi="${pi}" data-pk="${k}"`); }).join('')}`;
 }
 /* the number goes where N sits in the chip, e.g. "Team of [3]" */
 function patInput(t, v, attrs) {
@@ -782,7 +777,7 @@ function partHtml(it, i, p, pi) {
   const multi = it.parts.length > 1, scheme = schemeOfP(p);
   const head = multi
     ? `<div class="fdiv"><span class="t">${String.fromCharCode(65 + pi)}</span><button class="c2 on" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(p.fmt.label || '방식 없음')}</button>${pList(p).map(x => `<button class="c2 val" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(patLabel(x))}</button>`).join('')}<span class="grow"></span><button class="icon" data-action="part-del" data-i="${i}" data-pi="${pi}" aria-label="${String.fromCharCode(65 + pi)} 구간 없애기">✕</button></div>`
-    : `<div class="frame"><div class="row between"><span class="lbl">구성</span><button class="pill ${ui.frEdit ? 'lime' : ''}" style="font-size:12px;padding:3px 10px" data-action="fr-toggle">${ui.frEdit ? '완료' : '편집'}</button></div><span class="lbl" style="font-weight:500">방식</span>${fmtChips(i, pi, p)}<span class="lbl" style="font-weight:500">패턴</span>${patChips(i, pi, p)}${ui.frEdit ? '<div class="sub" style="font-size:12px">칩을 누르면 수정, ✕는 삭제예요. 칩을 꾹 누르면 순서도 바꿀 수 있어요.</div>' : ''}</div>`;
+    : `<div class="frame"><div class="row between"><span class="lbl">구성</span><button class="pill ${ui.frEdit ? 'lime' : ''}" style="font-size:12px;padding:3px 10px" data-action="fr-toggle">${ui.frEdit ? '완료' : '편집'}</button></div>${frameChips(i, pi, p)}${ui.frEdit ? '<div class="sub" style="font-size:12px">칩을 누르면 수정, ✕는 삭제예요. 칩을 꾹 누르면 순서도 바꿀 수 있어요.</div>' : ''}</div>`;
   const ord = ui.mvOrder === i, first = pi === 0, last = pi === it.parts.length - 1;
   const rows = ord ? p.moves.map((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || scheme || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && j === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && j === p.moves.length - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`).join('')
     : p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><div class="wcell"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(wNum(m.w))}" placeholder="-" aria-label="${j+1}번 무게"><button class="wu" data-action="mv-wu" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 무게 단위 바꾸기">${mvUnit(m)}</button></div><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
@@ -1033,10 +1028,8 @@ function sheetFrame() {
   ui.sheet = sheetFrame;
   const f = ui.frame;
   openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">${f.mode === 'insert' ? '구간 나누기' : '구성 바꾸기'}</h2><button class="pill solid" data-action="frame-apply">${f.mode === 'insert' ? '넣기' : '적용'}</button></div>
-    <div class="row between"><span class="lbl">방식</span><button class="pill" style="font-size:12px;padding:3px 10px" data-action="frames-open">구성 편집</button></div>
-    <div class="chips2">${state.formats.map(x => `<button class="c2 ${f.fmt === x.id ? 'on' : ''}" data-action="frame-fmt" data-v="${x.id}" data-lp="fmt:${x.id}">${esc(x.label)}</button>`).join('')}<button class="c2 ${f.fmt === 'none' ? 'on' : ''}" data-action="frame-fmt" data-v="none">없음</button></div>
-    <div class="lbl">패턴</div>
-    <div class="chips2">${state.patterns.map(t => `<button class="c2 ${f.pats.some(x => x.t === t.id) ? 'val' : ''}" data-action="frame-pat" data-v="${t.id}" data-lp="pat:${t.id}">${esc(patShape(t))}</button>`).join('')}<button class="c2 ${f.pats.length ? '' : 'val'}" data-action="frame-pat" data-v="">패턴 없음</button></div>
+    <div class="row between"><span class="lbl">구성</span><button class="pill" style="font-size:12px;padding:3px 10px" data-action="frames-open">구성 편집</button></div>
+    <div class="chips2">${state.formats.map(x => `<button class="c2 ${f.fmt === x.id ? 'on' : ''}" data-action="frame-fmt" data-v="${x.id}" data-lp="fmt:${x.id}">${esc(x.label)}</button>`).join('')}${state.patterns.map(t => `<button class="c2 ${f.pats.some(x => x.t === t.id) ? 'val' : ''}" data-action="frame-pat" data-v="${t.id}" data-lp="pat:${t.id}">${esc(patShape(t))}</button>`).join('')}<button class="c2 ${f.fmt === 'none' && !f.pats.length ? 'on' : ''}" data-action="frame-fmt" data-v="none">없음</button></div>
     ${f.pats.map((x, k) => { const t = state.patterns.find(y => y.id === x.t); return t ? patInput(t, x.v, `data-framepv="${k}"`) + recentPat(t, `data-action="frame-pv" data-pk="${k}"`) : ''; }).join('')}
     ${f.mode === 'insert' && f.below ? `<div class="sub" style="font-size:13px">아래에 있는 ${esc(f.below)}부터 새 구간이 시작돼요</div>` : ''}`);
 }
@@ -1181,7 +1174,7 @@ const A = {
   'add-ex': el => { const it = exItem(el.dataset.id, ui.draft.date); ui.draft.items.push(it); closeSheet(); render(true); toast(it.prefilled ? '지난 기록을 채웠어요' : '운동을 추가했어요'); setTimeout(() => $('#screen').scrollTo({top:$('#screen').scrollHeight, behavior:'smooth'}), 30); },
   'record-daily': () => { const d = newDraft(recordDate()); openEditor(d); A['add-daily'](); },
   'add-daily': () => { ui.draft.items.push(dailyItem()); closeSheet(); render(true); setTimeout(() => { const t = document.querySelectorAll('[data-wn]'); t[t.length - 1]?.closest('.card')?.scrollIntoView({block:'start'}); }, 30); },
-  'set-fmt': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], f = fmtFind(el.dataset.v); if (f) { p.fmt = fmtCopy(f); p.res = {}; } render(true); },
+  'set-fmt': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], f = fmtFind(el.dataset.v); if (f) { p.fmt = fmtCopy(f); p.res = {}; } if (el.dataset.v === 'none') { p.pats = []; delete p.pat; } render(true); },
   'set-pat': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], t = state.patterns.find(x => x.id === el.dataset.v);
     p.pats = pList(p); delete p.pat; const k = t ? p.pats.findIndex(x => x.t === t.id) : -1;
     if (!t) p.pats = []; else if (k >= 0) p.pats.splice(k, 1); else p.pats.push(patFrom(t, ''));
@@ -1205,7 +1198,7 @@ const A = {
     ui.frame = {mode:'insert', i:+el.dataset.i, pi, j, fmt:p.fmt.id, pats:[], below:p.moves[j]?.n || ''}; sheetFrame(); },
   'frame-edit': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi];
     ui.frame = {mode:'edit', i:+el.dataset.i, pi:+el.dataset.pi, fmt:p.fmt.id, pats:pList(p).map(x => ({t:x.t, v:x.v}))}; sheetFrame(); },
-  'frame-fmt': el => { ui.frame.fmt = el.dataset.v; refreshSheet(); },
+  'frame-fmt': el => { ui.frame.fmt = el.dataset.v; if (el.dataset.v === 'none') ui.frame.pats = []; refreshSheet(); },
   'frame-pat': el => { const f = ui.frame, v = el.dataset.v, k = f.pats.findIndex(x => x.t === v);
     if (!v) f.pats = []; else if (k >= 0) f.pats.splice(k, 1); else f.pats.push({t:v, v:''});
     refreshSheet(); if (v && k < 0) document.querySelector(`[data-framepv="${f.pats.length - 1}"]`)?.focus(); },
