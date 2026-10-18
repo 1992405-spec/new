@@ -375,6 +375,10 @@ const patsLabel = p => pList(p).map(patLabel).filter(Boolean).join(' · ');
 const schemeOfP = p => pList(p).map(schemeOf).find(Boolean) || '';
 /* 구성 lines sit between exercise rows: each has "at" = the row it comes before; a row takes the rep scheme of the last line above it */
 const cfgLines = p => [...(p.fmt?.id && p.fmt.id !== 'none' ? [{kind:'fmt', at:p.fmtAt || 0}] : []), ...pList(p).map((x, k) => ({kind:'pat', k, at:x.at || 0}))].sort((a, b) => a.at - b.at);
+/* lines and exercise rows in the order they were added: line(label) and move(m, j) give each one's html */
+const lineLabel = (p, l) => l.kind === 'fmt' ? p.fmt.label : patLabel(pList(p)[l.k]);
+function partFlow(p, line, move) { const L = cfgLines(p), n = p.moves.length, at = j => L.filter(l => j === n ? l.at >= n : l.at === j).map(l => lineLabel(p, l)).filter(Boolean).map(line).join('');
+  return p.moves.map((m, j) => at(j) + move(m, j)).join('') + at(n); }
 const schemeAt = (p, j) => { let sc = ''; for (const l of cfgLines(p)) if (l.kind === 'pat' && l.at <= j) sc = schemeOf(pList(p)[l.k]) || sc; return sc; };
 const oldPat = p => p && !p.tpl ? patFrom(DEF_PATTERNS.find(t => t.id === p.kind) || DEF_PATTERNS[0], p.v) : p;
 /* "없음": a part with no format; the label stays empty so summaries skip it */
@@ -728,9 +732,9 @@ function pageDay() {
         <div class="row" style="align-items:flex-end;margin-top:4px"><span class="n" style="font-size:92px">${Math.round(hero.v*10)/10}</span><span class="unit" style="color:var(--lime-sub);font-size:20px">${U().toUpperCase()}</span></div>
         <div class="row between sub"><span>최고 세트 ${hero.w}${hero.u} × ${hero.r}</span><span>${prevBest ? `이전 최고 ${Math.round(prevBest*10)/10}${U()}` : '첫 기록'}</span></div></button>`; }
     const wodHero = s.items.filter(i => i.type === 'wod').map(it => { const b = bestWod(it.wodId, s.id), multi = it.parts.length > 1, p0 = it.parts[0];
-      return `<div class="hero"><div class="row between"><span class="eb" style="font-weight:700">${esc([it.name, multi ? '' : p0?.fmt.label, multi ? '' : p0 && patsLabel(p0)].filter(Boolean).join(' · '))}</span><span class="pill" style="background:#000;color:var(--lime);border-color:#000;font-weight:700">${esc(it.scale || 'Rx')}</span></div>
+      return `<div class="hero"><div class="row between"><span class="eb" style="font-weight:700">${esc(it.name || 'WOD')}</span><span class="pill" style="background:#000;color:var(--lime);border-color:#000;font-weight:700">${esc(it.scale || 'Rx')}</span></div>
       <div class="n" style="font-size:100px;margin-top:2px">${esc(wodResult(it) || '-')}</div><div class="sub">${it.wodId ? b ? `이전 최고 ${esc(b.txt)}` : '첫 기록' : ''}${it.partner ? ` · 파트너 ${esc(it.partner)}` : ''}</div>
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.parts.map((p, pi) => `${multi ? `<div style="font-weight:800;margin-top:${pi ? 8 : 0}px">${String.fromCharCode(65 + pi)} · ${esc([p.fmt.label, patsLabel(p), partResult(p)].filter(Boolean).join(' · '))}</div>` : ''}${p.moves.map((m, j) => `<div>${esc(m.sets?.length ? `${m.n} ${setsText(m, mvEx(m) || {unit:'km'})}${m.fields?.includes('w') ? ' ' + (m.u || 'kg') : ''}` : [m.q ? qTxt(m.q) : schemeAt(p, j), m.n, m.w].filter(Boolean).join(' '))}</div>`).join('')}`).join('')}</div></div>`; }).join('');
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.parts.map((p, pi) => `${multi ? `<div style="font-weight:800;margin-top:${pi ? 8 : 0}px">${esc([String.fromCharCode(65 + pi), partResult(p)].filter(Boolean).join(' · '))}</div>` : ''}${partFlow(p, t => `<div style="font-weight:800">${esc(t)}</div>`, (m, j) => `<div>${esc(m.sets?.length ? `${m.n} ${setsText(m, mvEx(m) || {unit:'km'})}${m.fields?.includes('w') ? ' ' + (m.u || 'kg') : ''}` : [m.q ? qTxt(m.q) : schemeAt(p, j), m.n, m.w].filter(Boolean).join(' '))}</div>`)}`).join('')}</div></div>`; }).join('');
     return `<div><div class="eb">${s.mood ? `${s.mood} ${MOODS.find(m => m[0] === s.mood)?.[1] || ''}` : ''}</div><h1 class="disp" style="font-size:52px;margin-top:4px">${esc(s.title || '운동')}</h1>
       <div class="sub" style="margin-top:6px">${[s.duration ? `${s.duration}분` : '', s.place, plan ? `${repeatText(plan)} 계획` : ''].filter(Boolean).map(esc).join(' · ')}</div></div>
       ${heroHtml}${wodHero}
@@ -839,16 +843,16 @@ function partHtml(it, i, p, pi) {
   const rows = ord ? p.moves.map((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || schemeAt(p, j) || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && j === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && j === n - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`).join('')
     : p.moves.map((m, j) => linesAt(j) + (j || sm ? '' : '<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>') + row(m, j)).join('') + linesAt(n);
   const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${partRes(p) === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, partRes(p))}</div>` : '';
-  return `<div class="part">${head}${rows}
-    ${ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-find" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && wodMoves(it).length > 1 ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="chip-add" data-i="${i}" data-pi="${pi}">+ 구성</button><button class="addex" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${n}">+ 구간</button></div>`}
+  const bar = ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-find" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && wodMoves(it).length > 1 ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="chip-add" data-i="${i}" data-pi="${pi}">+ 구성</button><button class="addex" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${n}">+ 구간</button></div>`;
+  return `<div class="part">${head}${bar}${rows}
     ${pres}</div>`;
 }
 /* live preview of what is being recorded, shown in the result box and redrawn on every keystroke */
 function wodSum(it) {
   const multi = it.parts.length > 1;
-  return it.parts.map((p, pi) => { const head = [multi ? String.fromCharCode(65 + pi) : '', p.fmt.label, patsLabel(p), multi ? partResult(p) : ''].filter(Boolean).join(' · ');
-    const ms = p.moves.map((m, j) => m.n.trim() ? `<div>${esc([m.q ? qTxt(m.q) : schemeAt(p, j), m.n.trim(), m.w].filter(Boolean).join(' '))}</div>` : '').join('');
-    return `<div class="sh">${esc(head)}</div>${ms || '<div style="opacity:.5">운동을 적으면 여기에 보여요</div>'}`; }).join('');
+  return it.parts.map((p, pi) => { const head = multi ? [String.fromCharCode(65 + pi), partResult(p)].filter(Boolean).join(' · ') : '';
+    const any = p.moves.some(m => m.n.trim()), ms = partFlow(p, t => `<div class="sh">${esc(t)}</div>`, (m, j) => m.n.trim() ? `<div>${esc([m.q ? qTxt(m.q) : schemeAt(p, j), m.n.trim(), m.w].filter(Boolean).join(' '))}</div>` : '');
+    return `${head ? `<div class="sh">${esc(head)}</div>` : ''}${ms}${any ? '' : '<div style="opacity:.5">운동을 적으면 여기에 보여요</div>'}`; }).join('');
 }
 function updateSum(i) { const el = document.getElementById(`wsum-${i}`), it = curItems()?.[+i]; if (el && it?.type === 'wod') el.innerHTML = wodSum(it); const pv = document.querySelector(`[data-respv="${i}"]`); if (pv && it?.type === 'wod') pv.textContent = wodResult(it) || '-'; }
 function wodResultBox(it, i) {
@@ -1109,7 +1113,7 @@ function sheetWod(id) {
   const hist = []; for (const s of [...state.sessions].sort((a,b) => b.date.localeCompare(a.date))) for (const it of s.items) if (it.type === 'wod' && it.wodId === id) hist.push({s, it});
   const multi = w.parts.length > 1;
   openSheet(`<div class="row between" style="align-items:flex-end"><span class="n" style="font-size:56px;text-transform:uppercase">${esc(w.name)}</span>${w.parts[0]?.fmt.label ? `<span class="pill lime" style="margin-bottom:8px">${esc(w.parts[0].fmt.label.toUpperCase())}</span>` : ''}</div>
-    ${w.parts.map((p, pi) => `${multi || pList(p).length ? `<div class="eb" style="color:var(--lime)">${multi ? String.fromCharCode(65 + pi) + ' · ' : ''}${esc([p.fmt.label, patsLabel(p)].filter(Boolean).join(' · '))}</div>` : ''}<div class="moves">${p.moves.map(m => `<div><b>${esc(qTxt(m.q) || schemeOfP(p))}</b><span>${esc([m.n, m.w].filter(Boolean).join(' '))}</span></div>`).join('')}</div>`).join('')}
+    ${w.parts.map((p, pi) => `${multi ? `<div class="eb" style="color:var(--lime)">${String.fromCharCode(65 + pi)}</div>` : ''}<div class="moves">${partFlow(p, t => `<div class="eb" style="color:var(--lime)">${esc(t)}</div>`, (m, j) => `<div><b>${esc(qTxt(m.q) || schemeAt(p, j))}</b><span>${esc([m.n, m.w].filter(Boolean).join(' '))}</span></div>`)}</div>`).join('')}
     ${w.note ? `<div class="sub">${esc(w.note)}</div>` : ''}${state.formats.find(f => f.id === w.parts[0]?.fmt.id)?.note ? `<div class="card sub" style="color:var(--ink)">${esc(state.formats.find(f => f.id === w.parts[0].fmt.id).note)}</div>` : ''}
     ${hist.length ? `<div class="card list" style="padding:2px 16px">${hist.slice(0, 5).map(({s, it}) => `<button class="it" data-action="open-day" data-date="${s.date}"><span class="n" style="font-size:26px;width:110px">${esc(wodResult(it) || '-')}</span><span class="grow sub">${s.date.replaceAll('-', '.')} · ${esc(it.scale || 'Rx')}</span></button>`).join('')}</div>` : ''}
     <button class="btn lime" data-action="record-wod" data-id="${w.id}">이 WOD로 기록하기</button>
