@@ -1026,7 +1026,7 @@ function sheetTabs() {
     <div class="sub" style="font-size:13px">이름을 바꾸거나 탭을 더 만들 수 있어요. 예: 수영 세트, 러닝 훈련</div>
     ${state.wodTabs.map((x, i) => `<div class="row" style="gap:6px"><input class="inp grow" data-tabl="${x.k}" value="${esc(x.label)}" aria-label="탭 글자">
       <button class="icon" data-action="tab-up" data-k="${x.k}" ${i ? '' : 'disabled'} aria-label="위로">↑</button>
-      ${['mine', 'named'].includes(x.k) ? '<span style="width:58px"></span>' : `<button class="btn danger small" style="width:58px;padding:8px 0" data-action="tab-del" data-k="${x.k}">${ui.confirm === 'tab-del-' + x.k ? '정말' : '삭제'}</button>`}</div>`).join('')}
+      ${['mine', 'named'].includes(x.k) ? '<span style="width:58px"></span>' : `<button class="btn danger small" style="width:58px;padding:8px 0" data-action="tab-del" data-k="${x.k}">${ui.confirm === 'tab-del-' + x.k ? '확인' : '삭제'}</button>`}</div>`).join('')}
     <button class="btn out small" data-action="tab-add">+ 탭 추가</button>
     <button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="tab-reset">처음 이름으로 되돌리기</button>`);
 }
