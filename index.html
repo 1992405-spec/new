@@ -464,7 +464,9 @@ const KEY = 'setlog-v4';
 let state;
 /* a new install starts empty; the example data is only loaded on request (and for the guide pictures) */
 const freshState = () => migrate({exercises:seedExercises(), mine:[], sessions:[], plans:[], goal:4});
-const exampleState = () => migrate({exercises:seedExercises(), mine:seedMine(), sessions:seedSessions(), plans:seedPlans(), goal:4});
+const exampleState = () => { const st = migrate({exercises:seedExercises(), mine:seedMine(), sessions:seedSessions(), plans:seedPlans(), goal:4});
+  const sq = st.exercises.find(e => e.id === 'sq'); if (sq) sq.rm = [{date:ymd(addDays(new Date(), -70)), v:'130', u:'kg'}, {date:ymd(addDays(new Date(), -21)), v:'140', u:'kg'}];
+  return st; };
 function load() { try { const raw = localStorage.getItem(KEY); if (raw) { state = migrate(JSON.parse(raw)); return; } } catch (e) {} state = freshState(); }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 /* WODs used to be one format + a flat move list; now a WOD is parts (frame + exercises), so older records are converted once */
@@ -922,14 +924,35 @@ function sheetExHistory(id) {
   const hs = hits(id, ex.name), pts = series(id), best = pts.length ? Math.max(...pts.map(p => p.v)) : 0;
   openSheet(`<div class="row between" style="align-items:flex-end"><h2 class="disp" style="font-size:36px">${esc(ex.name)}</h2><button class="pill" data-action="edit-ex" data-id="${id}">편집</button></div>
     <div class="row wrap" style="gap:6px"><span class="pill lime">기록 ${hs.length}번</span><span class="pill">${catOf(ex.cat).label}</span>${hs[0] ? `<span class="pill">마지막 ${md(hs[0].s.date)}</span>` : ''}${best ? `<span class="pill">예상 1RM 최고 ${best}kg</span>` : ''}</div>
+    ${rmCard(ex)}
     ${hs.length ? `<div class="card list" style="padding:2px 16px">${hs.map(hitRow).join('')}</div>` : '<div class="empty">아직 이 운동을 기록한 날이 없어요.</div>'}`);
 }
+/* 1RM the user enters by hand: a dated history, newest is the current one */
+/* drop one entry, matched by its values (the sheet may hold an older copy) */
+const rmDrop = (ex, ref) => { const k = (ex.rm || []).findIndex(r => ref && r.date === ref.date && r.v === ref.v && r.u === ref.u); if (k >= 0) ex.rm.splice(k, 1); };
+const rmList = ex => (ex.rm || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+const rmNow = ex => rmList(ex)[0];
+function rmCard(ex) {
+  const list = rmList(ex), cur = list[0], f = ui.rmEdit && ui.rmEdit.id === ex.id ? ui.rmEdit : null;
+  const form = f ? `<div class="col" style="display:flex;flex-direction:column;gap:8px;border-top:1px solid #2a2a2a;padding-top:10px">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center"><input class="inp" style="min-width:0;font-family:var(--num);font-weight:800;font-size:22px" data-rm="v" inputmode="decimal" value="${esc(f.v)}" placeholder="무게" aria-label="1RM 무게">
+        <button class="pill lime" style="padding:12px 16px" data-action="rm-unit" aria-label="단위 바꾸기">${f.u}</button></div>
+      <label class="field"><span class="lbl">기록한 날짜</span><input class="inp" type="date" data-rm="date" value="${f.date}" max="${TODAY()}" aria-label="1RM 기록 날짜"></label>
+      <div class="row btnrow" style="gap:8px">${f.k !== undefined ? `<button class="btn danger small" data-action="rm-del">${ui.confirm === 'rm-del' ? '한 번 더 누르면 삭제' : '삭제'}</button>` : '<button class="btn out small" data-action="rm-cancel">취소</button>'}<button class="btn lime small" data-action="rm-save">저장</button></div></div>` : '';
+  return `<div class="card" style="display:flex;flex-direction:column;gap:8px">
+    <div class="row between"><b>1RM</b><button class="pill ${cur ? '' : 'lime'}" style="font-size:12px;padding:3px 10px" data-action="rm-new" data-id="${ex.id}">${cur ? '새 1RM 기록' : '+ 1RM 기록'}</button></div>
+    ${cur ? `<button class="row" style="align-items:flex-end;gap:8px;background:none;border:0;padding:0;color:inherit;text-align:left" data-action="rm-edit" data-id="${ex.id}" data-k="0" aria-label="지금 1RM 고치기"><span class="n" style="font-size:52px;color:var(--lime)">${esc(cur.v)}</span><span class="disp" style="font-size:20px;padding-bottom:8px">${cur.u}</span><span class="sub" style="padding-bottom:9px;margin-left:auto">${dotDate(cur.date)} 기록 ✎</span></button>` : '<div class="sub" style="font-size:13px">직접 잰 1RM 무게를 적어 두면 날짜와 함께 바뀐 기록이 쌓여요.</div>'}
+    ${list.length > 1 ? `<div class="list" style="padding:0">${list.map((r, k) => { const prev = list[k + 1], d = prev && prev.u === r.u ? Math.round((+r.v - +prev.v) * 10) / 10 : null;
+      return `<button class="it" data-action="rm-edit" data-id="${ex.id}" data-k="${k}"><span class="sub" style="width:84px">${dotDate(r.date)}</span><span class="grow t">${esc(r.v)}${r.u}</span>${d ? `<span class="sub" style="color:${d > 0 ? 'var(--lime)' : 'var(--red)'}">${d > 0 ? '+' : ''}${d}${r.u}</span>` : ''}</button>`; }).join('')}</div>` : ''}
+    ${form}</div>`;
+}
+const dotDate = ds => ds.replaceAll('-', '.');
 
 /* library */
 function libList() {
   const q = ui.libQ.trim(), list = state.exercises.filter(e => (ui.libCat === 'all' || e.cat === ui.libCat) && (!q || exMatch(e, norm(q))));
   return exCats().map(c => ({c, items:list.filter(e => e.cat === c.k)})).filter(g => g.items.length).map(g => `<div><div class="row" style="gap:8px;margin-bottom:6px"><span class="bar" style="background:${g.c.color};height:14px"></span><span class="eb">${g.c.label} · ${g.items.length}</span></div>
-    <div class="card list" style="padding:4px 16px">${g.items.map(e => `<button class="it" data-action="ex-history" data-id="${e.id}"><span class="grow"><span class="t" style="display:block">${esc(e.name)}</span><span class="meta" style="display:block">${e.fields.map(k => FIELDS[k].label + (k === 'd' ? `(${e.unit})` : '')).join(' · ')}</span></span><span class="sub">기록 ${hits(e.id, e.name).length}</span></button>`).join('')}</div></div>`).join('') + (q ? recordSearch(q) : '') || '<div class="empty">찾는 운동이 없어요.</div>';
+    <div class="card list" style="padding:4px 16px">${g.items.map(e => `<button class="it" data-action="ex-history" data-id="${e.id}"><span class="grow"><span class="t" style="display:block">${esc(e.name)}</span><span class="meta" style="display:block">${e.fields.map(k => FIELDS[k].label + (k === 'd' ? `(${e.unit})` : '')).join(' · ')}</span></span><span class="sub" style="text-align:right">${rmNow(e) ? `<span style="color:var(--lime);display:block">1RM ${esc(rmNow(e).v)}${rmNow(e).u}</span>` : ''}기록 ${hits(e.id, e.name).length}</span></button>`).join('')}</div></div>`).join('') + (q ? recordSearch(q) : '') || '<div class="empty">찾는 운동이 없어요.</div>';
 }
 function recordSearch(q) {
   const hs = hits(null, q);
@@ -1207,6 +1230,15 @@ const A = {
     if (partRes(p) !== before) p.res = {}; closeSheet(); render(true);
     if (hasN(x)) { const b = document.querySelectorAll(`[data-patv="${pi}"][data-i="${i}"]`); b[b.length - 1]?.focus(); } else toast(`${x.label}을(를) 넣었어요`); },
   'pat-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.pats = pList(p).filter((_, k) => k !== +el.dataset.pk); delete p.pat; render(true); },
+  'rm-new': el => { ui.confirm = null; const c = rmNow(exById(el.dataset.id) || {}); ui.rmEdit = {id:el.dataset.id, v:'', u:c?.u || U(), date:TODAY()}; refreshSheet(); $('#sheet [data-rm=v]')?.focus(); },
+  'rm-edit': el => { ui.confirm = null; const r = rmList(exById(el.dataset.id))[+el.dataset.k]; if (!r) return; ui.rmEdit = {id:el.dataset.id, k:+el.dataset.k, ref:{...r}, v:r.v, u:r.u, date:r.date}; refreshSheet(); },
+  'rm-unit': () => { ui.rmEdit.u = ui.rmEdit.u === 'kg' ? 'lb' : 'kg'; refreshSheet(); },
+  'rm-cancel': () => { ui.rmEdit = null; refreshSheet(); },
+  'rm-save': () => { const f = ui.rmEdit, ex = exById(f.id), v = String(f.v || '').replace(',', '.').trim();
+    if (!(+v > 0)) { toast('무게를 숫자로 적어 주세요'); return; }
+    ex.rm ||= []; rmDrop(ex, f.ref); ex.rm.push({date:f.date || TODAY(), v:String(+v), u:f.u});
+    ui.rmEdit = null; save(); refreshSheet(); render(true); toast(f.ref ? '1RM을 고쳤어요' : '1RM을 기록했어요'); },
+  'rm-del': () => { if (ui.confirm !== 'rm-del') { ui.confirm = 'rm-del'; return refreshSheet(); } ui.confirm = null; const f = ui.rmEdit, ex = exById(f.id); rmDrop(ex, f.ref); ui.rmEdit = null; save(); refreshSheet(); render(true); toast('지웠어요'); },
   'set-chip': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], before = partRes(p), n = toggleChip(p.fmt, pList(p), el.dataset.v);
     p.fmt = n.fmt; p.pats = n.pats; delete p.pat; if (partRes(p) !== before) p.res = {};
     render(true); const k = p.pats.findIndex(y => y.t === el.dataset.v); if (k >= 0 && hasN(p.pats[k])) document.querySelector(`[data-patv="${el.dataset.pi}"][data-pk="${k}"][data-i="${el.dataset.i}"]`)?.focus(); },
@@ -1354,7 +1386,7 @@ const A = {
   // library
   'lib-cat': el => { ui.libCat = el.dataset.v; render(true); },
   'edit-ex': el => { const src = el.dataset.id ? exById(el.dataset.id) : null; ui.exd = src ? JSON.parse(JSON.stringify(src)) : {name:el.dataset.from === 'pick' ? ui.pickQ : '', cat:'weight', fields:['w','r'], unit:'km'}; ui.exFrom = el.dataset.from || null; ui.confirm = null; sheetExEditor(); },
-  'ex-history': el => sheetExHistory(el.dataset.id),
+  'ex-history': el => { ui.rmEdit = null; sheetExHistory(el.dataset.id); },
   'e-cat': el => { ui.exd.cat = el.dataset.v; refreshSheet(); },
   'e-field': el => { const f = el.dataset.v, d = ui.exd; d.fields = d.fields.includes(f) ? d.fields.filter(x => x !== f) : ['w','r','t','d'].filter(x => x === f || d.fields.includes(x)); refreshSheet(); },
   'e-unit': el => { ui.exd.unit = el.dataset.v; refreshSheet(); },
@@ -1414,7 +1446,7 @@ document.addEventListener('click', e => {
     lastTap = {ds, t:now}; ui.sel = ds; if (!ds.startsWith(ui.month)) ui.month = ds.slice(0, 7); render(true); return; }
   const el = e.target.closest('[data-action]'); if (!el) return;
   const a = el.dataset.action;
-  if (ui.confirm && !['del-session','cancel-edit','del-plan','del-wod','del-ex','reset','wipe','fe-del','fr-reset','cat-del','named-reset','tab-del'].includes(a)) ui.confirm = null;
+  if (ui.confirm && !['del-session','cancel-edit','del-plan','del-wod','del-ex','reset','wipe','fe-del','fr-reset','cat-del','named-reset','tab-del','rm-del'].includes(a)) ui.confirm = null;
   A[a]?.(el);
 });
 document.addEventListener('input', e => {
@@ -1430,6 +1462,7 @@ document.addEventListener('input', e => {
   if (ds.res) { const it = curItems()[+ds.i]; it.res = {...(it.res || {}), [ds.res]:t.value}; const pv = document.querySelector(`[data-respv="${ds.i}"]`); if (pv) pv.textContent = wodResult(it) || '-'; return; }
   if (ds.tn) { ui.tdraft.note = t.value; return; }
   if (ds.fe) { ui.fe[ds.fe] = t.value; return; }
+  if (ds.rm) { ui.rmEdit[ds.rm] = t.value; return; }
   if (ds.ce) { ui.ce[ds.ce] = t.value; return; }
   if (ds.p) { ui.pdraft[ds.p] = t.value; if (ds.p === 'start') { if (!t.value) ui.pdraft.start = TODAY(); if (ui.pdraft.repeat === 'weekly' && ui.pdraft.days.length <= 1) ui.pdraft.days = [parseYmd(ui.pdraft.start).getDay()]; } if (ds.p !== 'title') render(true); return; }
   if (ds.e) { ui.exd[ds.e] = t.value; return; }
