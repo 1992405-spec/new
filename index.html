@@ -345,7 +345,15 @@ const DEF_PATTERNS = [
 const patShape = t => t.tpl === 'N' ? t.label : t.tpl.replace('N', '□');
 const patLabel = p => !p ? '' : p.tpl ? (p.v ? p.tpl.replace('N', p.v) : patShape(p)) : p.kind === 'scheme' ? p.v : p.kind === 'rounds' ? `${p.v} 라운드` : `${p.v}분`;
 const schemeOf = p => p && (p.fill || p.kind === 'scheme') ? p.v || '' : '';
-const patFrom = (t, v) => t ? {t:t.id, label:t.label, tpl:t.tpl, fill:!!t.fill, v:v || ''} : null;
+const patFrom = (t, v) => t ? {t:t.id, label:t.label, tpl:t.tpl || t.label, fill:!!t.fill, ...(t.res ? {res:t.res} : {}), v:v || ''} : null;
+/* 방식 chips: formats and number chips ("N 라운드") are one list to the user; any number of them can be picked */
+const chipById = id => state.formats.find(x => x.id === id) || state.patterns.find(x => x.id === id);
+const chipKind = x => state.formats.includes(x) ? 'fmt' : 'pat';
+const chipText = x => x.tpl ? patShape(x) : x.label;
+const hasN = x => !!x.tpl && x.tpl.includes('N');
+/* "n 라운드", "Team of n", "AMRAP n분": a standalone n (or □) is the number typed on each record */
+const N_RE = /(^|[^A-Za-z])[Nn□_](?=[^A-Za-z]|$)/;
+const partRes = p => (p.fmt?.id !== 'none' && p.fmt?.res) || pList(p).map(x => x.res).find(Boolean) || 'text';
 const pList = p => p.pats || (p.pat ? [p.pat] : []);
 const patsLabel = p => pList(p).map(patLabel).filter(Boolean).join(' · ');
 const schemeOfP = p => pList(p).map(schemeOf).find(Boolean) || '';
@@ -547,7 +555,7 @@ function itemText(it) {
 }
 const summary = s => s.items.map(itemText).join(' · ');
 const setsText = (it, ex) => it.sets.map(x => it.fields.map(k => x[k] ? `${x[k]}${k === 'd' ? ex.unit : ''}` : '').filter(Boolean).join(' × ')).filter(Boolean).join(' · ');
-const resType = it => (it.parts?.length > 1 ? 'time' : it.parts?.[0]?.fmt?.res) || 'text';
+const resType = it => it.parts?.length > 1 ? 'time' : it.parts?.[0] ? partRes(it.parts[0]) : 'text';
 function fmtRes(v, type) {
   v = String(v || '').trim(); if (!v) return '';
   if (type === 'rr') { const m = v.match(/^(\d+)\s*[+rR]\s*\+?\s*(\d+)$/); if (m) return `${m[1]}R+${m[2]}`; if (/^\d+$/.test(v)) return `${v}R`; }
@@ -559,7 +567,7 @@ function wodResult(it) { const r = it.res || {};
   if (r.status === 'DNF') return `DNF${r.short ? ' -' + String(r.short).replace(/^-/, '') : ''}`;
   if (r.status === 'DONE') return r.v ? `DONE ${fmtRes(r.v, resType(it))}` : 'DONE';
   return fmtRes(r.v, resType(it)); }
-const partResult = p => p.res?.status === 'DONE' ? 'DONE' : fmtRes(p.res?.v, p.fmt?.res);
+const partResult = p => p.res?.status === 'DONE' ? 'DONE' : fmtRes(p.res?.v, partRes(p));
 const resScore = (v, type) => { v = String(v || ''); if (type === 'time') return -msToSec(v); if (type === 'rr') { const m = v.match(/^(\d+)\D*(\d+)?$/); return m ? +m[1] * 1000 + (+m[2] || 0) : NaN; } return parseFloat(v); };
 function bestWod(id, exceptSessionId) {
   if (!id) return null;
@@ -714,7 +722,7 @@ function newDraft(date, plan) {
 function exItem(id, date) { const ex = exById(id); const prev = prevSetsFor(id, date); return {type:'ex', id:uid(), exId:id, fields:[...ex.fields], wu:prev?.wu || U(), sets:prev ? prev.map(x => ({...x})) : [{}], prefilled:!!prev}; }
 const blankMove = () => ({n:'', exId:null, q:'', w:''});
 function wodItem(w) { return {type:'wod', id:uid(), wodId:w.id, name:w.name, scale:'Rx', res:{}, parts:w.parts.map(p => ({fmt:{...p.fmt}, pats:pList(p).map(x => ({...x})), res:{}, moves:p.moves.map(m => { const ex = (m.exId && exById(m.exId)) || findEx(m.n); return {n:ex?.name || m.n, exId:ex?.id || null, q:m.q || '', w:m.w || '', rx:m.w || ''}; })}))}; }
-const dailyItem = () => ({type:'wod', id:uid(), wodId:null, name:'', scale:'Rx', res:{}, parts:[{fmt:fmtCopy(state.formats[0] || DEF_FORMATS[0]), pats:[], res:{}, moves:[blankMove(), blankMove()]}]});
+const dailyItem = () => ({type:'wod', id:uid(), wodId:null, name:'', scale:'Rx', res:{}, parts:[{fmt:{...NO_FMT}, pats:[], res:{}, moves:[blankMove(), blankMove()]}]});
 /* the item list the WOD card is editing: a day's record, or a saved WOD template */
 const curItems = () => ui.page === 'tpl' ? ui.tdraft.items : ui.draft.items;
 function pageEdit() {
@@ -752,12 +760,34 @@ function exEditCard(it, i) {
 const findEx = name => state.exercises.find(e => exIs(e, name));
 /* WOD card: each part is a frame (format + pattern) followed by its exercises; a frame can be inserted between exercises */
 function usage() { const c = {}; for (const s of state.sessions) for (const it of s.items) { if (it.type === 'ex') c[it.exId] = (c[it.exId] || 0) + 1; else wodMoves(it).forEach(m => { if (m.exId) c[m.exId] = (c[m.exId] || 0) + 1; }); } return c; }
-/* one chip row: formats (pick one) and patterns (pick several); a pattern with N shows its number box below */
+/* one 방식 row: tap to pick or unpick, several at once; a chip with N shows its number box below */
+const chipList = () => [...state.formats, ...state.patterns];
+const chipOn = (fmtId, pats, x) => fmtId === x.id || pats.some(y => y.t === x.id);
 function frameChips(i, pi, p) {
-  const ed = ui.frEdit, ps = pList(p), on = t => ps.some(x => x.t === t.id);
-  if (ed) return `<div class="chips2">${state.formats.map(f => `<button class="c2" data-action="fr-edit" data-kind="fmt" data-id="${f.id}">${esc(f.label)}<span class="x" data-action="fr-del" data-kind="fmt" data-id="${f.id}" role="button" aria-label="${esc(f.label)} 삭제">✕</span></button>`).join('')}${state.patterns.map(t => `<button class="c2" data-action="fr-edit" data-kind="pat" data-id="${t.id}">${esc(patShape(t))}<span class="x" data-action="fr-del" data-kind="pat" data-id="${t.id}" role="button" aria-label="${esc(t.label)} 삭제">✕</span></button>`).join('')}<button class="c2 add" data-action="fr-edit" data-kind="fmt">+ 방식</button><button class="c2 add" data-action="fr-edit" data-kind="pat">+ 패턴</button></div>`;
-  return `<div class="chips2">${state.formats.map(f => `<button class="c2 ${p.fmt.id === f.id ? 'on' : ''}" data-action="set-fmt" data-i="${i}" data-pi="${pi}" data-v="${f.id}" data-lp="fmt:${f.id}">${esc(f.label)}</button>`).join('')}${state.patterns.map(t => `<button class="c2 ${on(t) ? 'val' : ''}" data-action="set-pat" data-i="${i}" data-pi="${pi}" data-v="${t.id}" data-lp="pat:${t.id}">${esc(patShape(t))}</button>`).join('')}<button class="c2 ${p.fmt.id === 'none' && !ps.length ? 'on' : ''}" data-action="set-fmt" data-i="${i}" data-pi="${pi}" data-v="none">없음</button></div>
-    ${ps.map((x, k) => { const t = state.patterns.find(y => y.id === x.t) || x; return patInput(t, x.v, `data-patv="${pi}" data-pk="${k}" data-i="${i}"`) + recentPat(t, `data-action="set-patv" data-i="${i}" data-pi="${pi}" data-pk="${k}"`); }).join('')}`;
+  const ps = pList(p);
+  if (ui.frEdit) return `<div class="chips2">${chipList().map(x => `<button class="c2" data-action="fr-edit" data-kind="${chipKind(x)}" data-id="${x.id}">${esc(chipText(x))}<span class="x" data-action="fr-del" data-kind="${chipKind(x)}" data-id="${x.id}" role="button" aria-label="${esc(x.label)} 삭제">✕</span></button>`).join('')}<button class="c2 add" data-action="fr-edit">+ 추가</button></div>`;
+  return `<div class="chips2">${chipList().map(x => `<button class="c2 ${chipOn(p.fmt.id, ps, x) ? 'on' : ''}" data-action="set-chip" data-i="${i}" data-pi="${pi}" data-v="${x.id}" data-lp="${chipKind(x)}:${x.id}">${esc(chipText(x))}</button>`).join('')}<button class="c2 ${p.fmt.id === 'none' && !ps.length ? 'on' : ''}" data-action="set-chip" data-i="${i}" data-pi="${pi}" data-v="none">없음</button></div>
+    ${patBoxes(i, pi, p)}`;
+}
+function patBoxes(i, pi, p, short) {
+  const ps = pList(p), dup = x => ps.filter(y => y.t === x.t).length > 1;
+  return ps.map((x, k) => hasN(x) ? `<div class="row" style="gap:6px">${patInput(chipById(x.t) || x, x.v, `data-patv="${pi}" data-pk="${k}" data-i="${i}"`)}${dup(x) ? `<button class="icon" data-action="pat-del" data-i="${i}" data-pi="${pi}" data-pk="${k}" aria-label="${esc(x.label)} 빼기">✕</button>` : ''}</div>` + (short ? '' : recentPat(chipById(x.t) || x, `data-action="set-patv" data-i="${i}" data-pi="${pi}" data-pk="${k}"`)) : '').join('');
+}
+/* "+ 방식": one more chip in the same group of exercises (21-15-9 and 42-30-18 together), no new section */
+function sheetChipAdd(i, pi) {
+  ui.sheet = () => sheetChipAdd(i, pi);
+  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">방식 추가</h2><button class="pill" data-action="close-sheet">닫기</button></div>
+    <div class="sub" style="font-size:13px">구간을 나누지 않고 이 운동들에 방식을 하나 더 넣어요. 같은 칩도 여러 번 넣을 수 있어요. 예: 21-15-9 + 42-30-18</div>
+    <div class="chips2">${chipList().map(x => `<button class="c2" data-action="chip-add-pick" data-i="${i}" data-pi="${pi}" data-v="${x.id}">${esc(chipText(x))}</button>`).join('')}</div>`);
+}
+/* pick or unpick chip id on {fmt, pats}; the first picked format chip stays in fmt (it sets how the result is written) */
+function toggleChip(fmt, pats, id) {
+  if (id === 'none') return {fmt:NO_FMT, pats:[]};
+  const x = chipById(id); if (!x) return {fmt, pats};
+  if (fmt.id === id) { const k = pats.findIndex(y => state.formats.some(f => f.id === y.t)); if (k < 0) return {fmt:NO_FMT, pats}; const f = chipById(pats[k].t); return {fmt:f ? fmtCopy(f) : NO_FMT, pats:pats.filter((_, n) => n !== k)}; }
+  if (pats.some(y => y.t === id)) return {fmt, pats:pats.filter(y => y.t !== id)};
+  if (chipKind(x) === 'fmt' && fmt.id === 'none') return {fmt:fmtCopy(x), pats};
+  return {fmt, pats:[...pats, patFrom(x, '')]};
 }
 /* the number goes where N sits in the chip, e.g. "Team of [3]" */
 function patInput(t, v, attrs) {
@@ -776,15 +806,15 @@ function resInput(attrs, v, type) {
 function partHtml(it, i, p, pi) {
   const multi = it.parts.length > 1, scheme = schemeOfP(p);
   const head = multi
-    ? `<div class="fdiv"><span class="t">${String.fromCharCode(65 + pi)}</span><button class="c2 on" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(p.fmt.label || '방식 없음')}</button>${pList(p).map(x => `<button class="c2 val" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(patLabel(x))}</button>`).join('')}<span class="grow"></span><button class="icon" data-action="part-del" data-i="${i}" data-pi="${pi}" aria-label="${String.fromCharCode(65 + pi)} 구간 없애기">✕</button></div>`
+    ? `<div class="fdiv"><span class="t">${String.fromCharCode(65 + pi)}</span><button class="c2 on" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(p.fmt.label || '방식 없음')}</button>${pList(p).map(x => `<button class="c2 val" data-action="frame-edit" data-i="${i}" data-pi="${pi}">${esc(patLabel(x))}</button>`).join('')}<span class="grow"></span><button class="icon" data-action="part-del" data-i="${i}" data-pi="${pi}" aria-label="${String.fromCharCode(65 + pi)} 구간 없애기">✕</button></div>${patBoxes(i, pi, p, true)}`
     : `<div class="frame"><div class="row between"><span class="lbl">구성</span><button class="pill ${ui.frEdit ? 'lime' : ''}" style="font-size:12px;padding:3px 10px" data-action="fr-toggle">${ui.frEdit ? '완료' : '편집'}</button></div>${frameChips(i, pi, p)}${ui.frEdit ? '<div class="sub" style="font-size:12px">칩을 누르면 수정, ✕는 삭제예요. 칩을 꾹 누르면 순서도 바꿀 수 있어요.</div>' : ''}</div>`;
   const ord = ui.mvOrder === i, first = pi === 0, last = pi === it.parts.length - 1;
   const rows = ord ? p.moves.map((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || scheme || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && j === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && j === p.moves.length - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`).join('')
     : p.moves.map((m, j) => `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(scheme || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><div class="wcell"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(wNum(m.w))}" placeholder="-" aria-label="${j+1}번 무게"><button class="wu" data-action="mv-wu" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 무게 단위 바꾸기">${mvUnit(m)}</button></div><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
       <div class="sug" id="sug-${i}-${pi}-${j}"></div>${j < p.moves.length - 1 ? `<button class="ins" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${j + 1}" aria-label="여기서 구간 나누기"><b>구간 나누기</b></button>` : ''}`).join('');
-  const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${p.fmt.res === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, p.fmt.res)}</div>` : '';
+  const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${partRes(p) === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, partRes(p))}</div>` : '';
   return `<div class="part">${head}${ord ? '' : '<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>'}${rows}
-    ${ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-add" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && wodMoves(it).length > 1 ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${p.moves.length}">+ 구간 추가</button></div>`}
+    ${ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-add" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && wodMoves(it).length > 1 ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" data-action="chip-add" data-i="${i}" data-pi="${pi}">+ 방식</button><button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${p.moves.length}">+ 구간</button></div>`}
     ${scheme && !multi ? `<div class="note">횟수는 구성(${esc(scheme)})에서 자동으로 채워져요</div>` : ''}${pres}</div>`;
 }
 /* live preview of what is being recorded, shown in the result box and redrawn on every keystroke */
@@ -851,10 +881,8 @@ function pagePlan() {
 /* wod tab */
 function framesHtml() {
   return `<div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div class="row between"><b>방식</b><span class="sub" style="font-size:12px">누르면 수정 · ✕ 삭제</span></div>
-    <div class="chips2">${state.formats.map(f => `<button class="c2" data-action="fr-edit" data-kind="fmt" data-id="${f.id}" data-lp="fmt:${f.id}">${esc(f.label)}<span class="sub" style="font-size:11px;margin-left:5px">${RES_TYPES[f.res]?.label || ''}</span><span class="x" data-action="fr-del" data-kind="fmt" data-id="${f.id}" role="button" aria-label="${esc(f.label)} 삭제">✕</span></button>`).join('')}<button class="c2 add" data-action="fr-edit" data-kind="fmt">+ 추가</button></div>
-    <div class="row between" style="margin-top:6px"><b>패턴</b></div>
-    <div class="chips2">${state.patterns.map(t => `<button class="c2" data-action="fr-edit" data-kind="pat" data-id="${t.id}" data-lp="pat:${t.id}">${esc(patShape(t))}<span class="x" data-action="fr-del" data-kind="pat" data-id="${t.id}" role="button" aria-label="${esc(t.label)} 삭제">✕</span></button>`).join('')}<button class="c2 add" data-action="fr-edit" data-kind="pat">+ 추가</button></div>
+    <div class="row between"><b>방식</b><span class="sub" style="font-size:12px">누르면 수정 · ✕ 삭제 · 여러 개 골라 써요</span></div>
+    <div class="chips2">${chipList().map(x => `<button class="c2" data-action="fr-edit" data-kind="${chipKind(x)}" data-id="${x.id}" data-lp="${chipKind(x)}:${x.id}">${esc(chipText(x))}${x.res ? `<span class="sub" style="font-size:11px;margin-left:5px">${RES_TYPES[x.res]?.label || ''}</span>` : ''}<span class="x" data-action="fr-del" data-kind="${chipKind(x)}" data-id="${x.id}" role="button" aria-label="${esc(x.label)} 삭제">✕</span></button>`).join('')}<button class="c2 add" data-action="fr-edit">+ 추가</button></div>
     <button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="fr-reset">${ui.confirm === 'fr-reset' ? '한 번 더 누르면 기본 구성으로 되돌려요' : '기본 구성으로 되돌리기'}</button></div>
     <div class="sub" style="font-size:12px">구성을 지우거나 고쳐도 이미 저장한 기록은 그대로예요.</div>`;
 }
@@ -1029,8 +1057,8 @@ function sheetFrame() {
   const f = ui.frame;
   openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">${f.mode === 'insert' ? '구간 나누기' : '구성 바꾸기'}</h2><button class="pill solid" data-action="frame-apply">${f.mode === 'insert' ? '넣기' : '적용'}</button></div>
     <div class="row between"><span class="lbl">구성</span><button class="pill" style="font-size:12px;padding:3px 10px" data-action="frames-open">구성 편집</button></div>
-    <div class="chips2">${state.formats.map(x => `<button class="c2 ${f.fmt === x.id ? 'on' : ''}" data-action="frame-fmt" data-v="${x.id}" data-lp="fmt:${x.id}">${esc(x.label)}</button>`).join('')}${state.patterns.map(t => `<button class="c2 ${f.pats.some(x => x.t === t.id) ? 'val' : ''}" data-action="frame-pat" data-v="${t.id}" data-lp="pat:${t.id}">${esc(patShape(t))}</button>`).join('')}<button class="c2 ${f.fmt === 'none' && !f.pats.length ? 'on' : ''}" data-action="frame-fmt" data-v="none">없음</button></div>
-    ${f.pats.map((x, k) => { const t = state.patterns.find(y => y.id === x.t); return t ? patInput(t, x.v, `data-framepv="${k}"`) + recentPat(t, `data-action="frame-pv" data-pk="${k}"`) : ''; }).join('')}
+    <div class="chips2">${chipList().map(x => `<button class="c2 ${chipOn(f.fmt, f.pats, x) ? 'on' : ''}" data-action="frame-chip" data-v="${x.id}" data-lp="${chipKind(x)}:${x.id}">${esc(chipText(x))}</button>`).join('')}<button class="c2 ${f.fmt === 'none' && !f.pats.length ? 'on' : ''}" data-action="frame-chip" data-v="none">없음</button></div>
+    ${f.pats.map((x, k) => { const t = chipById(x.t); return t && hasN(t) ? patInput(t, x.v, `data-framepv="${k}"`) + recentPat(t, `data-action="frame-pv" data-pk="${k}"`) : ''; }).join('')}
     ${f.mode === 'insert' && f.below ? `<div class="sub" style="font-size:13px">아래에 있는 ${esc(f.below)}부터 새 구간이 시작돼요</div>` : ''}`);
 }
 function sheetTabs() {
@@ -1049,22 +1077,20 @@ function sheetFrames() {
 }
 function sheetFrEdit() {
   ui.sheet = sheetFrEdit;
-  const d = ui.fe, isF = d.kind === 'fmt';
-  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">${isF ? '방식' : '패턴'} ${d.id ? '수정' : '추가'}</h2><button class="pill solid" data-action="fe-save">저장</button></div>
-    ${isF ? `<label class="field"><span class="lbl">칩에 보일 글자</span><input class="inp" id="feLabel" data-fe="label" value="${esc(d.label)}" placeholder="예: Chipper"></label>
-      <div class="field"><span class="lbl">결과는 어떻게 적어요?</span><div class="opt">${Object.entries(RES_TYPES).map(([k, r]) => `<button class="${d.res === k ? 'on' : ''}" data-action="fe-res" data-v="${k}">${r.label} <span>(${r.ex})</span></button>`).join('')}</div></div>
-      <label class="field"><span class="lbl">메모 (선택)</span><input class="inp" id="feNote" data-fe="note" value="${esc(d.note || '')}" placeholder="이 방식 설명"></label>`
-    : `<label class="field"><span class="lbl">칩 모양 (숫자 자리는 N)</span><input class="inp" id="feTpl" data-fe="tpl" value="${esc(d.tpl)}" placeholder="Team of N"></label>
-      <label class="field"><span class="lbl">칩에 보일 글자</span><input class="inp" id="feLabel" data-fe="label" value="${esc(d.label)}" placeholder="예: 팀 인원"></label>
-      <div class="field"><span class="lbl">숫자를 운동 줄 횟수에도 채울까요?</span><div class="opt">${[[false, '아니요 (5 라운드처럼)'], [true, '네 (21-15-9처럼)']].map(([v, l]) => `<button class="${!!d.fill === v ? 'on' : ''}" data-action="fe-fill" data-v="${v ? 1 : ''}">${l}</button>`).join('')}</div></div>
-      <div class="sub" style="font-size:13px">숫자는 저장하지 않아요. 기록할 때마다 칩 옆 칸에 적어요. 예: ${esc((d.tpl || 'Team of N').replace('N', '3'))}</div>`}
+  const d = ui.fe, n = N_RE.test(d.name || '');
+  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">방식 ${d.id ? '수정' : '추가'}</h2><button class="pill solid" data-action="fe-save">저장</button></div>
+    <label class="field"><span class="lbl">칩 이름 (그때그때 숫자를 적을 자리는 n)</span><input class="inp" id="feName" data-fe="name" value="${esc(d.name)}" placeholder="예: Chipper, n 라운드, Team of n"></label>
+    <div class="sub" style="font-size:13px" id="feHint">${n ? `기록할 때 n 자리에 숫자 칸이 떠요. 예: ${esc(d.name.replace(N_RE, '$13'))}` : 'n을 넣으면 기록할 때 숫자를 적는 칸이 떠요.'}</div>
+    <div class="field"><span class="lbl">결과는 어떻게 적어요?</span><div class="opt"><button class="${!d.res ? 'on' : ''}" data-action="fe-res" data-v="">정하지 않음 <span>(다른 칩을 따라가요)</span></button>${Object.entries(RES_TYPES).map(([k, r]) => `<button class="${d.res === k ? 'on' : ''}" data-action="fe-res" data-v="${k}">${r.label} <span>(${r.ex})</span></button>`).join('')}</div></div>
+    ${n ? `<div class="field"><span class="lbl">숫자를 운동 줄 횟수에도 채울까요?</span><div class="opt">${[[false, '아니요 (5 라운드처럼)'], [true, '네 (21-15-9처럼)']].map(([v, l]) => `<button class="${!!d.fill === v ? 'on' : ''}" data-action="fe-fill" data-v="${v ? 1 : ''}">${l}</button>`).join('')}</div></div>` : ''}
+    <label class="field"><span class="lbl">메모 (선택)</span><input class="inp" id="feNote" data-fe="note" value="${esc(d.note || '')}" placeholder="이 방식 설명"></label>
     ${d.id ? `<button class="btn danger small" data-action="fe-del">${ui.confirm === 'fe-del' ? '한 번 더 누르면 삭제' : '삭제'}</button>` : ''}`);
 }
 function sheetChipMenu(kind, id) {
   ui.sheet = () => sheetChipMenu(kind, id);
-  const x = (kind === 'fmt' ? state.formats : state.patterns).find(v => v.id === id); if (!x) return closeSheet();
-  openSheet(`<h2 class="disp" style="font-size:28px">${esc(kind === 'fmt' ? x.label : patShape(x))}</h2>
-    <div class="menu"><button data-action="fr-edit" data-kind="${kind}" data-id="${id}">수정<span>이름, ${kind === 'fmt' ? '결과 방식' : '숫자'}</span></button>
+  const x = chipById(id); if (!x) return closeSheet(); kind = chipKind(x);
+  openSheet(`<h2 class="disp" style="font-size:28px">${esc(chipText(x))}</h2>
+    <div class="menu"><button data-action="fr-edit" data-kind="${kind}" data-id="${id}">수정<span>이름, 결과 방식</span></button>
       <button data-action="fr-copy" data-kind="${kind}" data-id="${id}">복사해서 새로 만들기<span></span></button>
       <button data-action="fr-up" data-kind="${kind}" data-id="${id}">앞으로 옮기기<span>칩 순서</span></button>
       <button data-action="fr-del" data-kind="${kind}" data-id="${id}" style="color:var(--red)">삭제<span>지난 기록은 그대로</span></button></div>`);
@@ -1174,6 +1200,16 @@ const A = {
   'add-ex': el => { const it = exItem(el.dataset.id, ui.draft.date); ui.draft.items.push(it); closeSheet(); render(true); toast(it.prefilled ? '지난 기록을 채웠어요' : '운동을 추가했어요'); setTimeout(() => $('#screen').scrollTo({top:$('#screen').scrollHeight, behavior:'smooth'}), 30); },
   'record-daily': () => { const d = newDraft(recordDate()); openEditor(d); A['add-daily'](); },
   'add-daily': () => { ui.draft.items.push(dailyItem()); closeSheet(); render(true); setTimeout(() => { const t = document.querySelectorAll('[data-wn]'); t[t.length - 1]?.closest('.card')?.scrollIntoView({block:'start'}); }, 30); },
+  'chip-add': el => sheetChipAdd(+el.dataset.i, +el.dataset.pi),
+  'chip-add-pick': el => { const i = el.dataset.i, pi = el.dataset.pi, p = curItems()[+i].parts[+pi], x = chipById(el.dataset.v); if (!x) return;
+    const before = partRes(p); p.pats = pList(p); delete p.pat;
+    if (chipKind(x) === 'fmt' && p.fmt.id === 'none') p.fmt = fmtCopy(x); else p.pats.push(patFrom(x, ''));
+    if (partRes(p) !== before) p.res = {}; closeSheet(); render(true);
+    if (hasN(x)) { const b = document.querySelectorAll(`[data-patv="${pi}"][data-i="${i}"]`); b[b.length - 1]?.focus(); } else toast(`${x.label}을(를) 넣었어요`); },
+  'pat-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.pats = pList(p).filter((_, k) => k !== +el.dataset.pk); delete p.pat; render(true); },
+  'set-chip': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], before = partRes(p), n = toggleChip(p.fmt, pList(p), el.dataset.v);
+    p.fmt = n.fmt; p.pats = n.pats; delete p.pat; if (partRes(p) !== before) p.res = {};
+    render(true); const k = p.pats.findIndex(y => y.t === el.dataset.v); if (k >= 0 && hasN(p.pats[k])) document.querySelector(`[data-patv="${el.dataset.pi}"][data-pk="${k}"][data-i="${el.dataset.i}"]`)?.focus(); },
   'set-fmt': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], f = fmtFind(el.dataset.v); if (f) { p.fmt = fmtCopy(f); p.res = {}; } if (el.dataset.v === 'none') { p.pats = []; delete p.pat; } render(true); },
   'set-pat': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], t = state.patterns.find(x => x.id === el.dataset.v);
     p.pats = pList(p); delete p.pat; const k = t ? p.pats.findIndex(x => x.t === t.id) : -1;
@@ -1195,15 +1231,16 @@ const A = {
   'mv-quick': el => { const it = curItems()[+el.dataset.i], p = it.parts[it.parts.length - 1], ex = exById(el.dataset.id); if (!ex) return;
     const empty = p.moves.find(m => !m.n.trim()); if (empty) { empty.n = ex.name; empty.exId = ex.id; } else p.moves.push({...blankMove(), n:ex.name, exId:ex.id}); render(true); },
   'frame-insert': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi, j = +el.dataset.j, p = it.parts[pi];
-    ui.frame = {mode:'insert', i:+el.dataset.i, pi, j, fmt:p.fmt.id, pats:[], below:p.moves[j]?.n || ''}; sheetFrame(); },
+    ui.frame = {mode:'insert', i:+el.dataset.i, pi, j, fmt:'none', pats:[], below:p.moves[j]?.n || ''}; sheetFrame(); },
   'frame-edit': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi];
     ui.frame = {mode:'edit', i:+el.dataset.i, pi:+el.dataset.pi, fmt:p.fmt.id, pats:pList(p).map(x => ({t:x.t, v:x.v}))}; sheetFrame(); },
+  'frame-chip': el => { const f = ui.frame, n = toggleChip(fmtFind(f.fmt) || NO_FMT, f.pats.map(x => ({...patFrom(chipById(x.t), x.v), t:x.t})), el.dataset.v); f.fmt = n.fmt.id; f.pats = n.pats.map(x => ({t:x.t, v:x.v})); refreshSheet(); },
   'frame-fmt': el => { ui.frame.fmt = el.dataset.v; if (el.dataset.v === 'none') ui.frame.pats = []; refreshSheet(); },
   'frame-pat': el => { const f = ui.frame, v = el.dataset.v, k = f.pats.findIndex(x => x.t === v);
     if (!v) f.pats = []; else if (k >= 0) f.pats.splice(k, 1); else f.pats.push({t:v, v:''});
     refreshSheet(); if (v && k < 0) document.querySelector(`[data-framepv="${f.pats.length - 1}"]`)?.focus(); },
   'frame-pv': el => { ui.frame.pats[+el.dataset.pk].v = el.dataset.v; refreshSheet(); },
-  'frame-apply': () => { const f = ui.frame, it = curItems()[f.i], fm = fmtFind(f.fmt) || state.formats[0], pats = f.pats.map(x => patFrom(state.patterns.find(y => y.id === x.t), x.v)).filter(Boolean);
+  'frame-apply': () => { const f = ui.frame, it = curItems()[f.i], fm = fmtFind(f.fmt) || state.formats[0], pats = f.pats.map(x => patFrom(chipById(x.t), x.v)).filter(Boolean);
     if (f.mode === 'insert') { const p = it.parts[f.pi], moved = f.j < p.moves.length ? p.moves.splice(f.j) : [blankMove()];
       it.parts.splice(f.pi + 1, 0, {fmt:fmtCopy(fm), pats, res:{}, moves:moved}); if (!p.moves.length) p.moves.push(blankMove()); }
     else { const p = it.parts[f.pi]; if (p.fmt.id !== fm.id) p.res = {}; p.fmt = fmtCopy(fm); p.pats = pats; delete p.pat; }
@@ -1224,7 +1261,7 @@ const A = {
     if (sel.length < 1) { toast('묶을 운동을 골라 주세요'); return; }
     const moves = sel.map(i => { const it = items[i], ex = exById(it.exId) || {name:'', unit:'km'}, s0 = it.sets.find(x => Object.values(x).some(Boolean)) || {};
       return {n:ex.name, exId:it.exId, q:s0.r ? String(s0.r) : s0.d ? `${s0.d}${ex.unit}` : s0.t || '', w:s0.w ? `${s0.w}${wuOf(it)}` : ''}; });
-    const w = {...dailyItem(), parts:[{fmt:fmtCopy(state.formats[0] || DEF_FORMATS[0]), pats:[], res:{}, moves}]};
+    const w = {...dailyItem(), parts:[{fmt:{...NO_FMT}, pats:[], res:{}, moves}]};
     items.splice(sel[0], 1, w); for (const i of sel.slice(1).reverse()) items.splice(i, 1);
     ui.grouping = false; ui.groupSel = []; render(true); toast('WOD로 묶었어요. 구성과 결과를 적어 주세요'); },
   'add-wod': el => { ui.draft.items.push(wodItem(wodById(el.dataset.id))); if (!ui.draft.title) ui.draft.title = `WOD · ${wodById(el.dataset.id).name}`; closeSheet(); render(true); },
@@ -1284,20 +1321,21 @@ const A = {
   'fr-toggle': () => { ui.frEdit = !ui.frEdit; render(true); },
   'frames-open': () => sheetFrames(),
   'frames-back': () => { if (ui.frame && ui.page) sheetFrame(); else closeSheet(); },
-  'fr-edit': el => { const k = el.dataset.kind, x = el.dataset.id && (k === 'fmt' ? state.formats : state.patterns).find(v => v.id === el.dataset.id);
+  'fr-edit': el => { const x = el.dataset.id && chipById(el.dataset.id);
     if (!String(ui.sheet || '').includes('sheetChipMenu')) ui.feBack = ui.sheet; ui.confirm = null;
-    ui.fe = k === 'fmt' ? {kind:k, id:x?.id || null, label:x?.label || '', res:x?.res || 'time', note:x?.note || ''} : {kind:k, id:x?.id || null, label:x?.label || '', tpl:x?.tpl || '', fill:!!x?.fill, ph:x?.ph || ''}; sheetFrEdit(); },
-  'fr-copy': el => { A['fr-edit'](el); ui.fe.id = null; if (ui.fe.label) ui.fe.label += ' 2'; sheetFrEdit(); },
+    ui.fe = {id:x?.id || null, name:!x ? '' : x.tpl === 'N' ? x.label : x.tpl ? x.tpl.replace('N', 'n') : x.label, res:x ? x.res || '' : 'time', note:x?.note || '', fill:!!x?.fill, ph:x?.ph || ''}; sheetFrEdit(); },
+  'fr-copy': el => { A['fr-edit'](el); ui.fe.id = null; if (ui.fe.name) ui.fe.name += ' 2'; sheetFrEdit(); },
   'fe-res': el => { ui.fe.res = el.dataset.v; refreshSheet(); },
   'fe-fill': el => { ui.fe.fill = !!el.dataset.v; refreshSheet(); },
-  'fe-save': () => { const d = ui.fe;
-    if (d.kind === 'fmt') { if (!d.label.trim()) { toast('이름을 적어 주세요'); return; } const x = {id:d.id || 'f' + uid(), label:d.label.trim(), res:d.res, note:(d.note || '').trim()};
-      if (d.id) state.formats[state.formats.findIndex(f => f.id === d.id)] = x; else state.formats.push(x); }
-    else { let tpl = String(d.tpl || '').trim().replace(/[□_]/g, 'N'); if (!tpl) { toast('칩 모양을 적어 주세요'); return; } if (!tpl.includes('N')) tpl += ' N';
-      const x = {id:d.id || 'p' + uid(), label:(d.label || '').trim() || tpl.replace('N', '').trim(), tpl, fill:!!d.fill, ph:d.ph || (d.fill ? '21-15-9' : '3')};
-      if (d.id) state.patterns[state.patterns.findIndex(t => t.id === d.id)] = x; else state.patterns.push(x); }
-    save(); afterFrameEdit(d.id ? '구성을 고쳤어요' : '구성을 추가했어요'); },
-  'fe-del': () => { if (ui.confirm !== 'fe-del') { ui.confirm = 'fe-del'; return refreshSheet(); } ui.confirm = null; delFrame(ui.fe.kind, ui.fe.id); },
+  'fe-save': () => { const d = ui.fe, name = (d.name || '').trim(); if (!name) { toast('이름을 적어 주세요'); return; }
+    const old = d.id && chipById(d.id), id = d.id || 'f' + uid(); let x;
+    if (old && old.tpl === 'N' && name === old.label) x = {...old, res:d.res, note:(d.note || '').trim(), fill:!!d.fill};
+    else if (N_RE.test(name)) { const tpl = name.replace(N_RE, '$1N'); x = {id, label:tpl.replace('N', '').replace(/\s+/g, ' ').trim() || name, tpl, fill:!!d.fill, ph:d.ph || (d.fill ? '21-15-9' : '3'), note:(d.note || '').trim()}; if (d.res) x.res = d.res; }
+    else x = {id, label:name, res:d.res, note:(d.note || '').trim()};
+    const to = x.tpl ? state.patterns : state.formats, from = old ? (state.formats.includes(old) ? state.formats : state.patterns) : null;
+    if (from === to) to[to.indexOf(old)] = x; else { if (from) from.splice(from.indexOf(old), 1); to.push(x); }
+    save(); afterFrameEdit(d.id ? '방식을 고쳤어요' : '방식을 추가했어요'); },
+  'fe-del': () => { if (ui.confirm !== 'fe-del') { ui.confirm = 'fe-del'; return refreshSheet(); } ui.confirm = null; const x = chipById(ui.fe.id); if (x) delFrame(chipKind(x), x.id); },
   'fr-del': el => delFrame(el.dataset.kind, el.dataset.id),
   'fr-up': el => { const list = el.dataset.kind === 'fmt' ? state.formats : state.patterns, i = list.findIndex(v => v.id === el.dataset.id); if (i > 0) [list[i - 1], list[i]] = [list[i], list[i - 1]]; save(); afterFrameEdit('앞으로 옮겼어요'); },
   'fr-reset': () => { if (ui.confirm !== 'fr-reset') { ui.confirm = 'fr-reset'; render(true); return refreshSheet(); } state.formats = DEF_FORMATS.map(f => ({...f})); state.patterns = DEF_PATTERNS.map(p => ({...p})); ui.confirm = null; save(); render(true); refreshSheet(); toast('기본 구성으로 되돌렸어요'); },
