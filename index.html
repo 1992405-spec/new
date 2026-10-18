@@ -285,17 +285,17 @@ const dayLabel = ds => { const d = parseYmd(ds); return `${d.getMonth()+1}월 ${
 
 /* categories, WOD formats and patterns are defaults; the user's own lists live in state and can be edited */
 const DEF_CATS = [
-  {k:'weight', label:'웨이트', color:'#C8F031'},
-  {k:'body', label:'맨몸·홈트', color:'#FFD84D'},
-  {k:'cardio', label:'유산소', color:'#7CC4FF'},
-  {k:'swim', label:'수영', color:'#F2F2F2'},
+  {k:'weight', label:'Weight', color:'#C8F031'},
+  {k:'cardio', label:'Cardio', color:'#7CC4FF'},
   {k:'wod', label:'WOD', color:'#FF9F43'},
   {k:'etc', label:'기타', color:'#777777'}
 ];
+/* 2026-10-18: the starting list became Weight + Cardio; 맨몸·홈트 moved into Weight and 수영 into Cardio */
+const OLD_DEF_CATS = 'weight:웨이트,body:맨몸·홈트,cardio:유산소,swim:수영,wod:WOD,etc:기타', CAT_MOVE = {body:'weight', swim:'cardio'};
 const CAT_COLORS = ['#C8F031','#FFD84D','#7CC4FF','#F2F2F2','#FF9F43','#FF6B6B','#B794F6','#5EEAD4','#F472B6','#777777'];
 const cats = () => state.cats;
 const exCats = () => state.cats.filter(c => c.k !== 'wod');
-const catOf = k => state.cats.find(c => c.k === k) || state.cats.find(c => c.k === 'etc') || DEF_CATS[5];
+const catOf = k => state.cats.find(c => c.k === k) || state.cats.find(c => c.k === 'etc') || DEF_CATS[3];
 const FIELDS = {w:{label:'무게', unit:'kg', mode:'decimal'}, r:{label:'횟수', unit:'회', mode:'numeric'}, t:{label:'시간', unit:'', mode:'text'}, d:{label:'거리', unit:'km', mode:'decimal'}};
 const MOODS = [['💪','최고'],['🙂','좋음'],['😐','보통'],['🥵','힘듦'],['🤕','부상']];
 /* how a WOD result is written; a format picks one of these */
@@ -358,7 +358,7 @@ function seedExercises() {
     ['pu','풀업','body',B],['push','푸시업','body',B],['air','에어스쿼트','body',B],['situp','싯업','body',B],['burpee','버피','body',B],['du','더블언더','body',B],['hspu','핸드스탠드 푸시업','body',B],['t2b','토투바','body',B],['mu','머슬업','body',B],['box','박스점프','body',B],['wb','월볼','weight',W],['plank','플랭크','body',['t']],['dip','링 딥스','body',B],['pistol','피스톨 스쿼트','body',B],['backext','백 익스텐션','body',B],
     ['run','러닝','cardio',C,'km'],['rowerg','로잉머신','cardio',C,'m'],['bike','사이클','cardio',C,'km'],['ski','스키에르그','cardio',C,'m'],
     ['free','자유형','swim',C,'m'],['breast','평영','swim',C,'m']
-  ].map(([id,name,cat,fields,unit]) => ({id, name:EX_EN[name] || name, ko:name, cat, fields:[...fields], unit:unit || 'km'}));
+  ].map(([id,name,cat,fields,unit]) => ({id, name:EX_EN[name] || name, ko:name, cat:CAT_MOVE[cat] || cat, fields:[...fields], unit:unit || 'km'}));
 }
 const NAMED_OLD = [
   {id:'fran', name:'Fran', format:'fortime', scheme:'21-15-9', moves:[['21-15-9','스러스터 43/29kg'],['21-15-9','풀업']]},
@@ -458,6 +458,8 @@ function migrate(st) {
   [...(st.mine || []), ...(st.named || [])].forEach(w => w.parts?.forEach(toPats));
   st.mine = (st.mine || []).map(w => w.parts ? w : tplFromOld(w));
   st.named ||= [];
+  /* untouched old default categories switch to the new starting list */
+  if (st.cats.map(c => c.k + ':' + c.label).join(',').replace(':와드,', ':WOD,') === OLD_DEF_CATS) { st.cats = DEF_CATS.map(c => ({...c})); [...st.exercises, ...(st.plans || [])].forEach(x => { if (CAT_MOVE[x.cat]) x.cat = CAT_MOVE[x.cat]; }); }
   /* an exercise whose category is gone (or WOD) would be counted but never listed; file it under 기타 */
   st.exercises.forEach(e => { if (e.cat === 'wod' || !st.cats.some(c => c.k === e.cat)) e.cat = 'etc'; });
   /* 2026-10-16: "와드" is written WOD, "오늘의 와드" is Daily WOD */
@@ -891,7 +893,7 @@ function viewLib() {
   return `<div class="row between"><span class="eb">운동목록</span><button class="pill solid" data-action="edit-ex">+ 추가</button></div>
   <div class="row" style="align-items:flex-end;gap:10px"><h1 class="disp" style="font-size:64px">운동</h1><span class="n" style="font-size:64px;color:var(--lime)">${state.exercises.length}</span></div>
   <input class="search" id="libQ" type="search" placeholder="운동으로 기록 찾기" value="${esc(ui.libQ)}" aria-label="운동 검색">
-  <div class="chips">${[{k:'all', label:'전체'}, ...exCats()].map(c => `<button class="chip sm" aria-pressed="${ui.libCat === c.k}" data-action="lib-cat" data-v="${c.k}">${c.label}</button>`).join('')}<button class="chip sm" data-action="cats-edit" data-from="lib" aria-label="카테고리 편집">✎ 편집</button></div>
+  <div class="chips">${[{k:'all', label:'전체'}, ...exCats().filter(c => c.k !== 'etc' || ui.libCat === 'etc' || state.exercises.some(e => e.cat === 'etc'))].map(c => `<button class="chip sm" aria-pressed="${ui.libCat === c.k}" data-action="lib-cat" data-v="${c.k}">${c.label}</button>`).join('')}<button class="chip sm" data-action="cats-edit" data-from="lib" aria-label="카테고리 편집">✎ 편집</button></div>
   <div id="libList" style="display:flex;flex-direction:column;gap:16px">${libList()}</div>`;
 }
 
@@ -1088,7 +1090,7 @@ const withUnit = (w, u) => { w = String(w || '').trim(); return /^[\d.]+(\/[\d.]
 function cleanWod(it, onNew) {
   const parts = it.parts.map(p => ({...p, moves:p.moves.filter(m => m.n.trim()).map(m => {
     let ex = (m.exId && exById(m.exId)?.name === m.n.trim() && exById(m.exId)) || findEx(m.n);
-    if (!ex) { ex = {id:uid(), name:m.n.trim(), cat:[m.w ? 'weight' : 'body', 'etc'].find(k => state.cats.some(c => c.k === k)) || state.cats[0].k, fields:m.w ? ['w','r'] : ['r'], unit:'km'}; state.exercises.push(ex); onNew(); }
+    if (!ex) { ex = {id:uid(), name:m.n.trim(), cat:[m.w ? 'weight' : 'body', 'weight', 'etc'].find(k => state.cats.some(c => c.k === k)) || state.cats[0].k, fields:m.w ? ['w','r'] : ['r'], unit:'km'}; state.exercises.push(ex); onNew(); }
     return {n:ex.name, exId:ex.id, q:(m.q || '').trim(), w:withUnit(m.w, m.u)}; })})).filter(p => p.moves.length || p.res?.v || p.res?.status);
   if (!parts.length && !wodResult(it)) return null;
   return {...it, name:(it.name || '').trim() || 'Daily WOD', parts:parts.length ? parts : [{...it.parts[0], moves:[]}]};
