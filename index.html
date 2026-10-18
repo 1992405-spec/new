@@ -169,6 +169,7 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .swatch{width:36px;height:36px;border-radius:50%;border:2px solid transparent;padding:0;outline:2px solid transparent;outline-offset:2px}
 .swatch[aria-pressed="true"]{outline-color:var(--ink)}
 .btnrow>.btn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:8px;padding-right:8px}
+.chip .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 .toast{position:absolute;left:50%;top:18px;transform:translateX(-50%);background:var(--lime);color:#000;padding:10px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:30;white-space:nowrap}
 .search{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;width:100%}
 .cat-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:15px}
@@ -310,7 +311,12 @@ const DEF_CATS = [
 const OLD_DEF_CATS = 'weight:웨이트,body:맨몸·홈트,cardio:유산소,swim:수영,wod:WOD,etc:기타', CAT_MOVE = {body:'weight', swim:'cardio'};
 const CAT_COLORS = ['#C8F031','#FFD84D','#7CC4FF','#F2F2F2','#FF9F43','#FF6B6B','#B794F6','#5EEAD4','#F472B6','#777777'];
 const cats = () => state.cats;
-const exCats = () => state.cats.filter(c => c.k !== 'wod');
+/* 2026-10-18: two separate lists. state.cats = calendar categories (picked per record, used by 보기 설정);
+   state.exCats = 운동목록 categories (only for finding exercises) */
+const DEF_EX_CATS = DEF_CATS.filter(c => c.k !== 'wod');
+const exCats = () => state.exCats;
+const exCatOf = k => state.exCats.find(c => c.k === k) || state.exCats.find(c => c.k === 'etc') || DEF_EX_CATS[DEF_EX_CATS.length - 1];
+const catList = () => ui.catsFrom === 'lib' ? state.exCats : state.cats;
 const catOf = k => state.cats.find(c => c.k === k) || state.cats.find(c => c.k === 'etc') || DEF_CATS[3];
 const FIELDS = {w:{label:'무게', unit:'kg', mode:'decimal'}, r:{label:'횟수', unit:'회', mode:'numeric'}, t:{label:'시간', unit:'', mode:'text'}, d:{label:'거리', unit:'km', mode:'decimal'}};
 const MOODS = [['💪','최고'],['🙂','좋음'],['😐','보통'],['🥵','힘듦'],['🤕','부상']];
@@ -481,6 +487,8 @@ function tplFromOld(w) { return {id:w.id, name:w.name, note:w.note || '', named:
 function wodFromOld(it) { return {type:'wod', id:it.id || uid(), wodId:it.savedId || it.wodId || null, name:it.name || 'Daily WOD', parts:[partFromOld(it)], scale:it.scale || 'Rx', res:resFromOld(it.res), partner:it.res?.partner || ''}; }
 function migrate(st) {
   st.cats ||= DEF_CATS.map(c => ({...c}));
+  st.exCats ||= st.cats.filter(c => c.k !== 'wod').map(c => ({...c}));
+  if (!st.exCats.some(c => c.k === 'etc')) st.exCats.push({...DEF_EX_CATS[DEF_EX_CATS.length - 1]});
   st.formats ||= DEF_FORMATS.map(f => ({...f}));
   if (!st.patterns || st.patterns.some(t => !t.tpl)) st.patterns = DEF_PATTERNS.map(p => ({...p}));
   const toPats = p => { if (!p.pats) p.pats = p.pat ? [oldPat(p.pat)] : []; delete p.pat; };
@@ -493,7 +501,7 @@ function migrate(st) {
   if (st.cats.map(c => c.k + ':' + c.label).join(',').replace(':와드,', ':WOD,') === OLD_DEF_CATS) { st.cats = DEF_CATS.map(c => ({...c})); [...st.exercises, ...(st.plans || [])].forEach(x => { if (CAT_MOVE[x.cat]) x.cat = CAT_MOVE[x.cat]; }); }
   st.wodTabs ||= DEF_WOD_TABS.map(t => ({...t}));
   /* an exercise whose category is gone (or WOD) would be counted but never listed; file it under 기타 */
-  st.exercises.forEach(e => { if (e.cat === 'wod' || !st.cats.some(c => c.k === e.cat)) e.cat = 'etc'; });
+  st.exercises.forEach(e => { if (!st.exCats.some(c => c.k === e.cat)) e.cat = 'etc'; });
   /* 2026-10-16: "와드" is written WOD, "오늘의 와드" is Daily WOD */
   st.cats.forEach(c => { if (c.k === 'wod' && c.label === '와드') c.label = 'WOD'; });
   for (const s of st.sessions) { if (s.title) s.title = s.title.replace(/^와드 · /, 'WOD · '); for (const it of s.items) if (it.type === 'wod' && (it.name === '오늘의 와드' || it.name === 'Workout of the Day')) it.name = 'Daily WOD'; }
@@ -518,7 +526,8 @@ const exById = id => state.exercises.find(e => e.id === id);
 const wodById = id => allNamed().find(w => w.id === id) || state.mine.find(w => w.id === id);
 const sorted = () => [...state.sessions].sort((a,b) => a.date.localeCompare(b.date));
 const sessionsOn = ds => state.sessions.filter(s => s.date === ds);
-const sessionCat = s => { const it = s.items[0]; if (!it) return 'etc'; return it.type === 'wod' ? 'wod' : (exById(it.exId)?.cat || 'etc'); };
+const autoCat = s => { const it = s.items[0]; if (!it) return 'etc'; const k = it.type === 'wod' ? 'wod' : exById(it.exId)?.cat; return state.cats.some(c => c.k === k) ? k : 'etc'; };
+const sessionCat = s => s.cat && state.cats.some(c => c.k === s.cat) ? s.cat : autoCat(s);
 
 /* ---------- plans ---------- */
 function planOn(p, ds) {
@@ -739,6 +748,7 @@ function pageEdit() {
   ${plan ? `<div class="row wrap" style="gap:8px"><span class="pill lime">${esc(repeatText(plan))} · ${esc(plan.title)} 불러옴</span><span class="sub" style="font-size:12px">지난 무게를 미리 채웠어요</span></div>` : ''}
   <datalist id="exNames">${state.exercises.map(e => `<option value="${esc(e.name)}">`).join('')}</datalist>
   <input class="inp big" id="dTitle" data-d="title" value="${esc(d.title)}" placeholder="오늘 운동 제목 (예: 하체 데이)" aria-label="운동 제목">
+  <div><div class="eb" style="margin-bottom:8px">캘린더 카테고리</div><div class="chips">${cats().map(c => `<button class="chip sm" aria-pressed="${(d.cat || autoCat(d)) === c.k}" data-action="d-cat" data-v="${c.k}"><i class="dot" style="background:${c.color}"></i>${esc(c.label)}</button>`).join('')}</div></div>
   <div><div class="eb" style="margin-bottom:8px">오늘 컨디션</div><div class="chips">${MOODS.map(([e, l]) => `<button class="chip" aria-pressed="${d.mood === e}" data-action="mood" data-v="${e}">${e} ${l}</button>`).join('')}</div></div>
   ${d.items.map((it, i) => it.type === 'wod' ? wodCard(it, i) : exEditCard(it, i)).join('') || '<div class="card empty">아래에서 운동이나 WOD를 추가해 주세요.</div>'}
   ${ui.grouping ? `<div class="groupbar"><span class="sub" style="color:var(--ink)">${ui.groupSel.length}개 선택</span><span class="grow"></span><button class="pill" data-action="group-cancel">취소</button><button class="btn lime small" style="width:auto;padding:10px 18px" data-action="group-do">WOD로 묶기</button></div>`
@@ -923,7 +933,7 @@ function sheetExHistory(id) {
   const ex = exById(id); if (!ex) return closeSheet();
   const hs = hits(id, ex.name), pts = series(id), best = pts.length ? Math.max(...pts.map(p => p.v)) : 0;
   openSheet(`<div class="row between" style="align-items:flex-end"><h2 class="disp" style="font-size:36px">${esc(ex.name)}</h2><button class="pill" data-action="edit-ex" data-id="${id}">편집</button></div>
-    <div class="row wrap" style="gap:6px"><span class="pill lime">기록 ${hs.length}번</span><span class="pill">${catOf(ex.cat).label}</span>${hs[0] ? `<span class="pill">마지막 ${md(hs[0].s.date)}</span>` : ''}${best ? `<span class="pill">예상 1RM 최고 ${best}kg</span>` : ''}</div>
+    <div class="row wrap" style="gap:6px"><span class="pill lime">기록 ${hs.length}번</span><span class="pill">${exCatOf(ex.cat).label}</span>${hs[0] ? `<span class="pill">마지막 ${md(hs[0].s.date)}</span>` : ''}${best ? `<span class="pill">예상 1RM 최고 ${best}kg</span>` : ''}</div>
     ${rmCard(ex)}
     ${hs.length ? `<div class="card list" style="padding:2px 16px">${hs.map(hitRow).join('')}</div>` : '<div class="empty">아직 이 운동을 기록한 날이 없어요.</div>'}`);
 }
@@ -1050,7 +1060,7 @@ function pickList() {
   const q = ui.pickQ.trim().toLowerCase(), c = ui.pickCat;
   const exs = c === 'wod' ? [] : state.exercises.filter(e => (c === 'all' || e.cat === c) && (!q || exMatch(e, norm(q))));
   const wods = c === 'all' || c === 'wod' ? state.wodTabs.map(x => [x.label, tabList(x.k)]).map(([t, l]) => [t, l.filter(w => !q || w.name.toLowerCase().includes(q))]).filter(([, l]) => l.length) : [];
-  const exHtml = exs.length ? `${wods.length ? '<div class="eb">운동</div>' : ''}<div class="card list" style="padding:2px 16px">${exs.map(e => `<button class="it" data-action="add-ex" data-id="${e.id}"><span class="bar" style="background:${catOf(e.cat).color};height:18px"></span><span class="grow t">${esc(e.name)}</span><span class="pill">추가</span></button>`).join('')}</div>` : '';
+  const exHtml = exs.length ? `${wods.length ? '<div class="eb">운동</div>' : ''}<div class="card list" style="padding:2px 16px">${exs.map(e => `<button class="it" data-action="add-ex" data-id="${e.id}"><span class="bar" style="background:${exCatOf(e.cat).color};height:18px"></span><span class="grow t">${esc(e.name)}</span><span class="pill">추가</span></button>`).join('')}</div>` : '';
   const wodHtml = wods.map(([t, l]) => `<div class="eb">${t}</div><div class="card list" style="padding:2px 16px">${l.map(w => `<button class="it" data-action="add-wod" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:18px"></span><span class="grow"><span class="t" style="display:block">${esc(w.name)}</span><span class="meta" style="display:block">${esc(tplSummary(w))}</span></span><span class="pill">추가</span></button>`).join('')}</div>`).join('');
   return exHtml + wodHtml || '<div class="empty">찾는 운동이 없어요. 위의 + 새 운동으로 만들 수 있어요.</div>';
 }
@@ -1059,7 +1069,7 @@ function sheetPickEx() {
   openSheet(`<div class="row between"><h2 class="disp" style="font-size:30px">운동 · WOD 추가</h2><button class="pill lime" data-action="edit-ex" data-from="pick">+ 새 운동</button></div>
     <button class="hero" data-action="add-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:24px;display:block">Daily WOD 바로 적기</span><span class="sub" style="display:block;margin-top:4px">저장 없이 그날 WOD 내용과 결과만 적어요</span></button>
     <input class="search" id="pickQ" type="search" placeholder="운동이나 WOD 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
-    <div class="chips">${[{k:'all', label:'전체'}, ...cats()].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
+    <div class="chips">${[{k:'all', label:'전체'}, ...exCats(), {k:'wod', label:'WOD'}].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
     <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`);
 }
 function sheetWod(id) {
@@ -1121,12 +1131,12 @@ function sheetChipMenu(kind, id) {
 /* calendar categories */
 function sheetCats() {
   ui.sheet = sheetCats;
-  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">카테고리 편집</h2><button class="pill" data-action="cats-done">완료</button></div>
-    <div class="card list" style="padding:2px 16px">${cats().map((c, n) => `<div class="cat-row"><span class="bar" style="background:${c.color};height:18px"></span><button class="grow" style="text-align:left;background:none;border:0;padding:4px 0;font-size:15px" data-action="cat-edit" data-k="${c.k}">${esc(c.label)}</button>
+  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">${ui.catsFrom === 'lib' ? '운동 카테고리' : '캘린더 카테고리'}</h2><button class="pill" data-action="cats-done">완료</button></div>
+    <div class="card list" style="padding:2px 16px">${catList().map((c, n) => `<div class="cat-row"><span class="bar" style="background:${c.color};height:18px"></span><button class="grow" style="text-align:left;background:none;border:0;padding:4px 0;font-size:15px" data-action="cat-edit" data-k="${c.k}">${esc(c.label)}</button>
       <button class="icon" data-action="cat-up" data-k="${c.k}" ${n ? '' : 'disabled style="opacity:.25"'} aria-label="${esc(c.label)} 위로">↑</button><button class="icon" data-action="cat-edit" data-k="${c.k}" aria-label="${esc(c.label)} 수정">✎</button>
-      ${c.k === 'wod' || c.k === 'etc' ? '<span style="width:30px"></span>' : `<button class="icon" data-action="cat-del" data-k="${c.k}" aria-label="${esc(c.label)} 삭제" style="${ui.confirm === 'cat-del-' + c.k ? 'color:var(--red)' : ''}">${ui.confirm === 'cat-del-' + c.k ? '삭제?' : '✕'}</button>`}</div>`).join('')}</div>
+      ${(c.k === 'wod' && ui.catsFrom !== 'lib') || c.k === 'etc' ? '<span style="width:30px"></span>' : `<button class="icon" data-action="cat-del" data-k="${c.k}" aria-label="${esc(c.label)} 삭제" style="${ui.confirm === 'cat-del-' + c.k ? 'color:var(--red)' : ''}">${ui.confirm === 'cat-del-' + c.k ? '삭제?' : '✕'}</button>`}</div>`).join('')}</div>
     <button class="add" data-action="cat-edit">+ 카테고리 추가</button>
-    <div class="sub" style="font-size:12px">캘린더 보기 설정과 운동목록이 같은 카테고리를 써요. 지운 카테고리의 운동과 계획은 "기타"로 옮겨져요. 기록은 그대로예요.</div>`);
+    <div class="sub" style="font-size:12px">${ui.catsFrom === 'lib' ? '운동목록 카테고리는 운동을 찾을 때만 써요. 캘린더 카테고리와는 따로예요. 지운 카테고리의 운동은 "기타"로 옮겨져요.' : '캘린더 카테고리는 기록할 때 골라요. 운동목록 카테고리와는 따로예요. 지운 카테고리의 기록과 계획은 "기타"로 보여요.'}</div>`);
 }
 function sheetCatEdit() {
   ui.sheet = sheetCatEdit;
@@ -1169,7 +1179,7 @@ const withUnit = (w, u) => { w = String(w || '').trim(); return /^[\d.]+(\/[\d.]
 function cleanWod(it, onNew) {
   const parts = it.parts.map(p => ({...p, moves:p.moves.filter(m => m.n.trim()).map(m => {
     let ex = (m.exId && exById(m.exId)?.name === m.n.trim() && exById(m.exId)) || findEx(m.n);
-    if (!ex) { ex = {id:uid(), name:m.n.trim(), cat:[m.w ? 'weight' : 'body', 'weight', 'etc'].find(k => state.cats.some(c => c.k === k)) || state.cats[0].k, fields:m.w ? ['w','r'] : ['r'], unit:'km'}; state.exercises.push(ex); onNew(); }
+    if (!ex) { ex = {id:uid(), name:m.n.trim(), cat:[m.w ? 'weight' : 'body', 'weight', 'etc'].find(k => state.exCats.some(c => c.k === k)) || state.exCats[0].k, fields:m.w ? ['w','r'] : ['r'], unit:'km'}; state.exercises.push(ex); onNew(); }
     return {n:ex.name, exId:ex.id, q:(m.q || '').trim(), w:withUnit(m.w, m.u)}; })})).filter(p => p.moves.length || p.res?.v || p.res?.status);
   if (!parts.length && !wodResult(it)) return null;
   return {...it, name:(it.name || '').trim() || 'Daily WOD', parts:parts.length ? parts : [{...it.parts[0], moves:[]}]};
@@ -1217,6 +1227,7 @@ const A = {
     if (d.id) { const i = state.sessions.findIndex(s => s.id === d.id); state.sessions[i] = d; } else { d.id = uid(); state.sessions.push(d); }
     save(); ui.sel = d.date; ui.month = d.date.slice(0, 7); openDay(d.date); toast(added ? `기록을 저장했어요 · 새 운동 ${added}개를 운동목록에 넣었어요` : '기록을 저장했어요');
   },
+  'd-cat': el => { ui.draft.cat = el.dataset.v; render(true); },
   mood: el => { ui.draft.mood = ui.draft.mood === el.dataset.v ? '' : el.dataset.v; render(true); },
   'pick-ex': () => { ui.pickQ = ''; sheetPickEx(); },
   'pick-cat': el => { ui.pickCat = el.dataset.v; refreshSheet(); },
@@ -1374,15 +1385,15 @@ const A = {
   // calendar categories
   'cats-edit': el => { ui.confirm = null; ui.catsFrom = el.dataset.from || 'cal'; sheetCats(); },
   'cats-done': () => ui.catsFrom === 'lib' ? closeSheet() : sheetCatFilter(),
-  'cat-up': el => { const l = state.cats, i = l.findIndex(c => c.k === el.dataset.k); if (i > 0) [l[i - 1], l[i]] = [l[i], l[i - 1]]; save(); render(true); refreshSheet(); },
-  'cat-edit': el => { const c = el.dataset.k && catOf(el.dataset.k); ui.ce = {k:c?.k || null, label:c?.label || '', color:c?.color || CAT_COLORS[6]}; sheetCatEdit(); },
+  'cat-up': el => { const l = catList(), i = l.findIndex(c => c.k === el.dataset.k); if (i > 0) [l[i - 1], l[i]] = [l[i], l[i - 1]]; save(); render(true); refreshSheet(); },
+  'cat-edit': el => { const c = el.dataset.k && catList().find(x => x.k === el.dataset.k); ui.ce = {k:c?.k || null, label:c?.label || '', color:c?.color || CAT_COLORS[6]}; sheetCatEdit(); },
   'ce-color': el => { ui.ce.color = el.dataset.v; refreshSheet(); },
   'ce-save': () => { const d = ui.ce; if (!d.label.trim()) { toast('이름을 적어 주세요'); return; }
-    if (d.k) Object.assign(catOf(d.k), {label:d.label.trim(), color:d.color}); else state.cats.splice(Math.max(0, state.cats.findIndex(c => c.k === 'etc')), 0, {k:'c' + uid(), label:d.label.trim(), color:d.color});
+    const l = catList(); if (d.k) Object.assign(l.find(c => c.k === d.k), {label:d.label.trim(), color:d.color}); else l.splice(Math.max(0, l.findIndex(c => c.k === 'etc')), 0, {k:'c' + uid(), label:d.label.trim(), color:d.color});
     save(); render(true); sheetCats(); toast('카테고리를 저장했어요'); },
   'cat-del': el => { const k = el.dataset.k; if (ui.confirm !== 'cat-del-' + k) { ui.confirm = 'cat-del-' + k; return refreshSheet(); }
-    state.cats = state.cats.filter(c => c.k !== k); state.exercises.forEach(e => { if (e.cat === k) e.cat = 'etc'; }); state.plans.forEach(p => { if (p.cat === k) p.cat = 'etc'; });
-    ui.hidden = ui.hidden.filter(x => x !== k); if (ui.libCat === k) ui.libCat = 'all'; if (ui.pickCat === k) ui.pickCat = 'all'; ui.confirm = null; save(); render(true); refreshSheet(); toast('카테고리를 지웠어요. 운동은 기타로 옮겼어요'); },
+    if (ui.catsFrom === 'lib') { state.exCats = state.exCats.filter(c => c.k !== k); state.exercises.forEach(e => { if (e.cat === k) e.cat = 'etc'; }); } else { state.cats = state.cats.filter(c => c.k !== k); state.plans.forEach(p => { if (p.cat === k) p.cat = 'etc'; }); state.sessions.forEach(x => { if (x.cat === k) x.cat = 'etc'; }); }
+    ui.hidden = ui.hidden.filter(x => x !== k); if (ui.libCat === k) ui.libCat = 'all'; if (ui.pickCat === k) ui.pickCat = 'all'; ui.confirm = null; save(); render(true); refreshSheet(); toast('카테고리를 지웠어요. 기타로 옮겼어요'); },
   // library
   'lib-cat': el => { ui.libCat = el.dataset.v; render(true); },
   'edit-ex': el => { const src = el.dataset.id ? exById(el.dataset.id) : null; ui.exd = src ? JSON.parse(JSON.stringify(src)) : {name:el.dataset.from === 'pick' ? ui.pickQ : '', cat:'weight', fields:['w','r'], unit:'km'}; ui.exFrom = el.dataset.from || null; ui.confirm = null; sheetExEditor(); },
@@ -1398,13 +1409,13 @@ const A = {
   'del-ex': () => { if (ui.confirm !== 'del-ex') { ui.confirm = 'del-ex'; return refreshSheet(); } state.exercises = state.exercises.filter(e => e.id !== ui.exd.id); save(); ui.confirm = null; closeSheet(); render(true); toast('운동을 삭제했어요'); },
   // stats
   'stat-ex': el => { ui.statEx = el.dataset.v; render(true); },
-  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, formats:state.formats, patterns:state.patterns, theme:state.theme}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
+  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, exCats:state.exCats, formats:state.formats, patterns:state.patterns, theme:state.theme}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
   export: () => {
     const blob = new Blob([JSON.stringify({app:'setlog', v:1, saved:new Date().toISOString(), state}, null, 1)], {type:'application/json'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `setlog-backup-${TODAY()}.json`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast('백업 파일을 저장했어요');
   },
-  reset: () => { if (ui.confirm !== 'reset') { ui.confirm = 'reset'; return render(true); } const keep = {cats:state.cats, formats:state.formats, patterns:state.patterns, unit:state.unit, wodTabs:state.wodTabs, theme:state.theme}; state = exampleState(); Object.assign(state, keep); ui.confirm = null; save(); render(); toast('예시 데이터를 넣었어요. 지우려면 모든 기록 지우기'); }
+  reset: () => { if (ui.confirm !== 'reset') { ui.confirm = 'reset'; return render(true); } const keep = {cats:state.cats, exCats:state.exCats, formats:state.formats, patterns:state.patterns, unit:state.unit, wodTabs:state.wodTabs, theme:state.theme}; state = exampleState(); Object.assign(state, keep); ui.confirm = null; save(); render(); toast('예시 데이터를 넣었어요. 지우려면 모든 기록 지우기'); }
 };
 function shiftMonth(n) {
   if (ui.view === 'week') { ui.sel = ymd(addDays(parseYmd(ui.sel), 7*n)); ui.month = ui.sel.slice(0, 7); }
