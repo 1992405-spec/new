@@ -891,7 +891,7 @@ function viewLib() {
   return `<div class="row between"><span class="eb">운동목록</span><button class="pill solid" data-action="edit-ex">+ 추가</button></div>
   <div class="row" style="align-items:flex-end;gap:10px"><h1 class="disp" style="font-size:64px">운동</h1><span class="n" style="font-size:64px;color:var(--lime)">${state.exercises.length}</span></div>
   <input class="search" id="libQ" type="search" placeholder="운동으로 기록 찾기" value="${esc(ui.libQ)}" aria-label="운동 검색">
-  <div class="chips">${[{k:'all', label:'전체'}, ...exCats()].map(c => `<button class="chip sm" aria-pressed="${ui.libCat === c.k}" data-action="lib-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
+  <div class="chips">${[{k:'all', label:'전체'}, ...exCats()].map(c => `<button class="chip sm" aria-pressed="${ui.libCat === c.k}" data-action="lib-cat" data-v="${c.k}">${c.label}</button>`).join('')}<button class="chip sm" data-action="cats-edit" data-from="lib" aria-label="카테고리 편집">✎ 편집</button></div>
   <div id="libList" style="display:flex;flex-direction:column;gap:16px">${libList()}</div>`;
 }
 
@@ -1040,12 +1040,12 @@ function sheetChipMenu(kind, id) {
 /* calendar categories */
 function sheetCats() {
   ui.sheet = sheetCats;
-  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">카테고리 편집</h2><button class="pill" data-action="cat-filter">완료</button></div>
+  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">카테고리 편집</h2><button class="pill" data-action="cats-done">완료</button></div>
     <div class="card list" style="padding:2px 16px">${cats().map((c, n) => `<div class="cat-row"><span class="bar" style="background:${c.color};height:18px"></span><button class="grow" style="text-align:left;background:none;border:0;padding:4px 0;font-size:15px" data-action="cat-edit" data-k="${c.k}">${esc(c.label)}</button>
       <button class="icon" data-action="cat-up" data-k="${c.k}" ${n ? '' : 'disabled style="opacity:.25"'} aria-label="${esc(c.label)} 위로">↑</button><button class="icon" data-action="cat-edit" data-k="${c.k}" aria-label="${esc(c.label)} 수정">✎</button>
       ${c.k === 'wod' || c.k === 'etc' ? '<span style="width:30px"></span>' : `<button class="icon" data-action="cat-del" data-k="${c.k}" aria-label="${esc(c.label)} 삭제" style="${ui.confirm === 'cat-del-' + c.k ? 'color:var(--red)' : ''}">${ui.confirm === 'cat-del-' + c.k ? '삭제?' : '✕'}</button>`}</div>`).join('')}</div>
     <button class="add" data-action="cat-edit">+ 카테고리 추가</button>
-    <div class="sub" style="font-size:12px">지운 카테고리의 운동과 계획은 "기타"로 옮겨져요. 기록은 그대로예요.</div>`);
+    <div class="sub" style="font-size:12px">캘린더 보기 설정과 운동목록이 같은 카테고리를 써요. 지운 카테고리의 운동과 계획은 "기타"로 옮겨져요. 기록은 그대로예요.</div>`);
 }
 function sheetCatEdit() {
   ui.sheet = sheetCatEdit;
@@ -1262,7 +1262,8 @@ const A = {
   'fr-up': el => { const list = el.dataset.kind === 'fmt' ? state.formats : state.patterns, i = list.findIndex(v => v.id === el.dataset.id); if (i > 0) [list[i - 1], list[i]] = [list[i], list[i - 1]]; save(); afterFrameEdit('앞으로 옮겼어요'); },
   'fr-reset': () => { if (ui.confirm !== 'fr-reset') { ui.confirm = 'fr-reset'; render(true); return refreshSheet(); } state.formats = DEF_FORMATS.map(f => ({...f})); state.patterns = DEF_PATTERNS.map(p => ({...p})); ui.confirm = null; save(); render(true); refreshSheet(); toast('기본 구성으로 되돌렸어요'); },
   // calendar categories
-  'cats-edit': () => { ui.confirm = null; sheetCats(); },
+  'cats-edit': el => { ui.confirm = null; ui.catsFrom = el.dataset.from || 'cal'; sheetCats(); },
+  'cats-done': () => ui.catsFrom === 'lib' ? closeSheet() : sheetCatFilter(),
   'cat-up': el => { const l = state.cats, i = l.findIndex(c => c.k === el.dataset.k); if (i > 0) [l[i - 1], l[i]] = [l[i], l[i - 1]]; save(); render(true); refreshSheet(); },
   'cat-edit': el => { const c = el.dataset.k && catOf(el.dataset.k); ui.ce = {k:c?.k || null, label:c?.label || '', color:c?.color || CAT_COLORS[6]}; sheetCatEdit(); },
   'ce-color': el => { ui.ce.color = el.dataset.v; refreshSheet(); },
