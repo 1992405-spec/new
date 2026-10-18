@@ -391,7 +391,11 @@ const NAMED = NAMED_OLD.map(w => tplFromOld(w));
 /* built-in named WODs plus the ones the user adds (state.named, editable) */
 const ownNamed = () => state.named.filter(x => !NAMED.some(w => w.id === x.id));
 /* an edited built-in is kept in state.named under the same id and replaces the original */
-const allNamed = () => [...NAMED.map(w => state.named.find(x => x.id === w.id) || w), ...ownNamed()];
+const allNamed = () => [...NAMED.filter(w => !state.hiddenNamed.includes(w.id)).map(w => state.named.find(x => x.id === w.id) || w), ...ownNamed()];
+/* WOD tabs: "mine" and "named" are the starting tabs; both can be renamed and the user can add more (e.g. 수영 세트) */
+const DEF_WOD_TABS = [{k:'mine', label:'내 WOD'}, {k:'named', label:'네임드'}];
+const tabLabel = k => state.wodTabs.find(t => t.k === k)?.label || (k === 'named' ? '네임드' : '내 WOD');
+const tabList = k => k === 'named' ? [...ownNamed(), ...allNamed().filter(w => !w.own)] : state.mine.filter(w => (w.col || 'mine') === k);
 const seedMine = () => [
   {id:'m1', name:'월요일 파트너 WOD', format:'igyg', cap:24, rounds:10, moves:[{a:'10회',n:'Burpee'},{a:'15cal',n:'Row'}], note:'박스 수업에서 받은 WOD'},
   {id:'m2', name:'Burpee Death By', format:'deathby', moves:[{a:'매 분 +1',n:'Burpee'}]}
@@ -458,8 +462,10 @@ function migrate(st) {
   [...(st.mine || []), ...(st.named || [])].forEach(w => w.parts?.forEach(toPats));
   st.mine = (st.mine || []).map(w => w.parts ? w : tplFromOld(w));
   st.named ||= [];
+  st.hiddenNamed ||= [];
   /* untouched old default categories switch to the new starting list */
   if (st.cats.map(c => c.k + ':' + c.label).join(',').replace(':와드,', ':WOD,') === OLD_DEF_CATS) { st.cats = DEF_CATS.map(c => ({...c})); [...st.exercises, ...(st.plans || [])].forEach(x => { if (CAT_MOVE[x.cat]) x.cat = CAT_MOVE[x.cat]; }); }
+  st.wodTabs ||= DEF_WOD_TABS.map(t => ({...t}));
   /* an exercise whose category is gone (or WOD) would be counted but never listed; file it under 기타 */
   st.exercises.forEach(e => { if (e.cat === 'wod' || !st.cats.some(c => c.k === e.cat)) e.cat = 'etc'; });
   /* 2026-10-16: "와드" is written WOD, "오늘의 와드" is Daily WOD */
@@ -807,7 +813,7 @@ function wodCard(it, i) {
 /* saved WOD editor: the same card, without a result */
 function pageTpl() {
   const d = ui.tdraft;
-  return `<div class="row between"><button class="pill" data-action="tpl-cancel">취소</button><span class="eb">${d.kind === 'named' ? (d.id ? '네임드 WOD 수정' : '네임드 WOD 추가') : d.id ? '내 WOD 수정' : '내 WOD 만들기'}</span><button class="pill solid" data-action="tpl-save">저장</button></div>
+  return `<div class="row between"><button class="pill" data-action="tpl-cancel">취소</button><span class="eb">${esc(tabLabel(d.kind === 'named' ? 'named' : d.col || 'mine'))} · ${d.id ? '수정' : '추가'}</span><button class="pill solid" data-action="tpl-save">저장</button></div>
   ${wodCard(d.items[0], 0)}
   <input class="inp" id="tNote" data-tn="note" value="${esc(d.note || '')}" placeholder="메모 (무게, 스케일 방법)" aria-label="메모">`;
 }
@@ -842,19 +848,20 @@ function framesHtml() {
     <div class="sub" style="font-size:12px">구성을 지우거나 고쳐도 이미 저장한 기록은 그대로예요.</div>`;
 }
 function viewWod() {
+  if (ui.wodTab !== 'formats' && !state.wodTabs.some(x => x.k === ui.wodTab)) ui.wodTab = state.wodTabs[0]?.k || 'formats';
   const t = ui.wodTab;
   let body = '';
   if (t === 'formats') body = framesHtml();
-  else { const list = t === 'named' ? [...ownNamed(), ...allNamed().filter(w => !w.own)] : state.mine;
-    body = (t === 'mine' ? '<button class="btn out small" data-action="new-wod">+ 내 WOD 만들기</button>' : '<button class="btn out small" data-action="new-wod" data-kind="named">+ 네임드 WOD 추가</button>') + (list.map(w => { const b = bestWod(w.id);
+  else { const list = tabList(t);
+    body = `<button class="btn out small" data-action="new-wod" ${t === 'named' ? 'data-kind="named"' : `data-col="${t}"`}>+ ${esc(tabLabel(t))}에 추가</button>` + (list.map(w => { const b = bestWod(w.id);
       return `<button class="card" data-action="wod-detail" data-id="${w.id}" style="border:0;text-align:left;color:var(--ink);display:flex;flex-direction:column;gap:6px;width:100%">
         <div class="row between"><span class="n" style="font-size:38px;text-transform:uppercase">${esc(w.name)}</span><span class="row" style="gap:6px">${w.own ? '<span class="pill">직접 추가</span>' : w.edited ? '<span class="pill">수정함</span>' : ''}${w.parts[0]?.fmt.label ? `<span class="pill lime">${esc(w.parts[0].fmt.label.toUpperCase())}</span>` : ''}</span></div>
         <div class="sub">${esc(tplSummary(w))}</div>
-        ${b ? `<div class="row" style="gap:8px"><span class="eb">내 최고</span><span class="n" style="font-size:24px;color:var(--lime)">${esc(b.txt)}</span></div>` : ''}</button>`; }).join('') || '<div class="empty">저장한 WOD가 없어요.</div>'); }
+        ${b ? `<div class="row" style="gap:8px"><span class="eb">내 최고</span><span class="n" style="font-size:24px;color:var(--lime)">${esc(b.txt)}</span></div>` : ''}</button>`; }).join('') || '<div class="empty">저장한 WOD가 없어요.</div>') + (t === 'named' && state.hiddenNamed.length ? `<button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="named-unhide">지운 기본 네임드 ${state.hiddenNamed.length}개 되돌리기</button>` : ''); }
   return `<div class="row between"><span class="eb">WOD</span><span class="pill">${allNamed().length + state.mine.length}개</span></div>
   <h1 class="disp" style="font-size:64px">WOD</h1>
   <button class="hero" data-action="record-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:26px;display:block">Daily WOD 바로 기록</span><span class="sub" style="display:block;margin-top:4px">구성 고르고, 운동 고르고, 결과만 적어요</span></button>
-  <div class="row" style="gap:6px">${[['mine','내 WOD'],['named','네임드'],['formats','구성']].map(([k, l]) => `<button class="pill" aria-pressed="${t === k}" data-action="wod-tab" data-v="${k}">${l}</button>`).join('')}</div>
+  <div class="row" style="gap:6px">${[...state.wodTabs, {k:'formats', label:'구성'}].map(x => `<button class="pill" aria-pressed="${t === x.k}" data-action="wod-tab" data-v="${x.k}">${esc(x.label)}</button>`).join('')}<button class="pill" style="border-style:dashed;color:var(--mut)" data-action="tabs-edit">편집</button></div>
   ${body}`;
 }
 
@@ -976,7 +983,7 @@ function sheetPlanDetail(id, ds) {
 function pickList() {
   const q = ui.pickQ.trim().toLowerCase(), c = ui.pickCat;
   const exs = c === 'wod' ? [] : state.exercises.filter(e => (c === 'all' || e.cat === c) && (!q || exMatch(e, norm(q))));
-  const wods = c === 'all' || c === 'wod' ? [['내 WOD', state.mine], ['네임드 WOD', allNamed()]].map(([t, l]) => [t, l.filter(w => !q || w.name.toLowerCase().includes(q))]).filter(([, l]) => l.length) : [];
+  const wods = c === 'all' || c === 'wod' ? state.wodTabs.map(x => [x.label, tabList(x.k)]).map(([t, l]) => [t, l.filter(w => !q || w.name.toLowerCase().includes(q))]).filter(([, l]) => l.length) : [];
   const exHtml = exs.length ? `${wods.length ? '<div class="eb">운동</div>' : ''}<div class="card list" style="padding:2px 16px">${exs.map(e => `<button class="it" data-action="add-ex" data-id="${e.id}"><span class="bar" style="background:${catOf(e.cat).color};height:18px"></span><span class="grow t">${esc(e.name)}</span><span class="pill">추가</span></button>`).join('')}</div>` : '';
   const wodHtml = wods.map(([t, l]) => `<div class="eb">${t}</div><div class="card list" style="padding:2px 16px">${l.map(w => `<button class="it" data-action="add-wod" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:18px"></span><span class="grow"><span class="t" style="display:block">${esc(w.name)}</span><span class="meta" style="display:block">${esc(tplSummary(w))}</span></span><span class="pill">추가</span></button>`).join('')}</div>`).join('');
   return exHtml + wodHtml || '<div class="empty">찾는 운동이 없어요. 위의 + 새 운동으로 만들 수 있어요.</div>';
@@ -999,7 +1006,7 @@ function sheetWod(id) {
     ${w.note ? `<div class="sub">${esc(w.note)}</div>` : ''}${state.formats.find(f => f.id === w.parts[0]?.fmt.id)?.note ? `<div class="card sub" style="color:var(--ink)">${esc(state.formats.find(f => f.id === w.parts[0].fmt.id).note)}</div>` : ''}
     ${hist.length ? `<div class="card list" style="padding:2px 16px">${hist.slice(0, 5).map(({s, it}) => `<button class="it" data-action="open-day" data-date="${s.date}"><span class="n" style="font-size:26px;width:110px">${esc(wodResult(it) || '-')}</span><span class="grow sub">${s.date.replaceAll('-', '.')} · ${esc(it.scale || 'Rx')}</span></button>`).join('')}</div>` : ''}
     <button class="btn lime" data-action="record-wod" data-id="${w.id}">이 WOD로 기록하기</button>
-    ${w.named && !w.own ? `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="named">수정</button><button class="btn out small" data-action="copy-wod" data-id="${w.id}">내 WOD로 복사</button></div>${w.edited ? `<button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="named-reset" data-id="${w.id}">${ui.confirm === 'named-reset' ? '한 번 더 누르면 처음 내용으로 돌아가요' : '처음 내용으로 되돌리기'}</button>` : ''}` : `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="${w.own ? 'named' : ''}">수정</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>`}`);
+    ${w.named && !w.own ? `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="named">수정</button><button class="btn out small" data-action="copy-wod" data-id="${w.id}">${esc(tabLabel('mine'))}로 복사</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>${w.edited ? `<button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="named-reset" data-id="${w.id}">${ui.confirm === 'named-reset' ? '한 번 더 누르면 처음 내용으로 돌아가요' : '처음 내용으로 되돌리기'}</button>` : ''}` : `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="${w.own ? 'named' : ''}">수정</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>`}`);
 }
 /* frame sheet: insert a frame between exercises, or change one part's frame */
 function sheetFrame() {
@@ -1012,6 +1019,16 @@ function sheetFrame() {
     <div class="chips2">${state.patterns.map(t => `<button class="c2 ${f.pats.some(x => x.t === t.id) ? 'val' : ''}" data-action="frame-pat" data-v="${t.id}" data-lp="pat:${t.id}">${esc(patShape(t))}</button>`).join('')}<button class="c2 ${f.pats.length ? '' : 'val'}" data-action="frame-pat" data-v="">패턴 없음</button></div>
     ${f.pats.map((x, k) => { const t = state.patterns.find(y => y.id === x.t); return t ? patInput(t, x.v, `data-framepv="${k}"`) + recentPat(t, `data-action="frame-pv" data-pk="${k}"`) : ''; }).join('')}
     ${f.mode === 'insert' && f.below ? `<div class="sub" style="font-size:13px">아래에 있는 ${esc(f.below)}부터 새 구간이 시작돼요</div>` : ''}`);
+}
+function sheetTabs() {
+  ui.sheet = sheetTabs;
+  openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">WOD 탭 편집</h2><button class="pill" data-action="close-sheet">닫기</button></div>
+    <div class="sub" style="font-size:13px">이름을 바꾸거나 탭을 더 만들 수 있어요. 예: 수영 세트, 러닝 훈련</div>
+    ${state.wodTabs.map((x, i) => `<div class="row" style="gap:6px"><input class="inp grow" data-tabl="${x.k}" value="${esc(x.label)}" aria-label="탭 글자">
+      <button class="icon" data-action="tab-up" data-k="${x.k}" ${i ? '' : 'disabled'} aria-label="위로">↑</button>
+      ${['mine', 'named'].includes(x.k) ? '<span style="width:58px"></span>' : `<button class="btn danger small" style="width:58px;padding:8px 0" data-action="tab-del" data-k="${x.k}">${ui.confirm === 'tab-del-' + x.k ? '정말' : '삭제'}</button>`}</div>`).join('')}
+    <button class="btn out small" data-action="tab-add">+ 탭 추가</button>
+    <button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="tab-reset">처음 이름으로 되돌리기</button>`);
 }
 function sheetFrames() {
   ui.sheet = sheetFrames;
@@ -1185,7 +1202,7 @@ const A = {
   'dw-save': el => { const it = ui.draft.items[+el.dataset.i], t = tplFromItem(it);
     if (!wodMoves(t).length) { toast('WOD에 운동을 먼저 적어 주세요'); return; }
     t.id = uid(); if (!it.name.trim() || it.name.trim() === 'Daily WOD' || it.wodId) t.name = it.wodId ? `${t.name} (내 버전)` : `${md(ui.draft.date)} WOD`;
-    state.mine.unshift(t); save(); it.wodId = t.id; it.name = t.name; render(true); toast('내 WOD에 저장했어요'); },
+    state.mine.unshift(t); save(); it.wodId = t.id; it.name = t.name; render(true); toast(`${tabLabel('mine')}에 저장했어요`); },
   // group exercises into a WOD
   'group-start': () => { ui.grouping = true; ui.groupSel = []; render(true); },
   'group-cancel': () => { ui.grouping = false; ui.groupSel = []; render(true); },
@@ -1227,9 +1244,16 @@ const A = {
   guide: () => showGuide(),
   'guide-close': () => closeGuide(),
   'guide-next': () => { const tr = $('#gtrack'), i = Math.round(tr.scrollLeft / tr.clientWidth); if (i >= GUIDE.length - 1) return closeGuide(); tr.scrollTo({left:(i + 1) * tr.clientWidth, behavior:'smooth'}); },
+  'named-unhide': () => { state.hiddenNamed = []; save(); render(true); toast('기본 네임드를 되돌렸어요'); },
+  'tabs-edit': () => sheetTabs(),
+  'tab-add': () => { state.wodTabs.push({k:'c' + uid(), label:'새 탭'}); save(); render(true); refreshSheet(); const ins = document.querySelectorAll('[data-tabl]'); ins[ins.length - 1]?.select(); },
+  'tab-up': el => { const l = state.wodTabs, i = l.findIndex(x => x.k === el.dataset.k); if (i > 0) [l[i - 1], l[i]] = [l[i], l[i - 1]]; save(); render(true); refreshSheet(); },
+  'tab-del': el => { const k = el.dataset.k; if (ui.confirm !== 'tab-del-' + k) { ui.confirm = 'tab-del-' + k; return refreshSheet(); }
+    state.mine.forEach(w => { if (w.col === k) delete w.col; }); state.wodTabs = state.wodTabs.filter(x => x.k !== k); ui.confirm = null; save(); render(true); refreshSheet(); toast(`안에 있던 WOD는 ${tabLabel('mine')}로 옮겼어요`); },
+  'tab-reset': () => { const keep = state.wodTabs.filter(x => !['mine', 'named'].includes(x.k)); state.wodTabs = [...DEF_WOD_TABS.map(t => ({...t})), ...keep]; save(); render(true); refreshSheet(); },
   'wod-tab': el => { ui.wodTab = el.dataset.v; render(true); },
   'wod-detail': el => { ui.confirm = null; sheetWod(el.dataset.id); },
-  'new-wod': el => { const kind = el.dataset.kind === 'named' ? 'named' : 'mine', src = el.dataset.id ? (kind === 'named' ? wodById(el.dataset.id) : state.mine.find(w => w.id === el.dataset.id)) : null; openTpl(src ? {id:src.id, name:src.name, note:src.note || '', parts:src.parts} : null, kind); },
+  'new-wod': el => { const kind = el.dataset.kind === 'named' ? 'named' : 'mine', src = el.dataset.id ? (kind === 'named' ? wodById(el.dataset.id) : state.mine.find(w => w.id === el.dataset.id)) : null; openTpl(src ? {id:src.id, name:src.name, note:src.note || '', parts:src.parts} : null, kind); ui.tdraft.col = src?.col || el.dataset.col || 'mine'; render(); },
   'copy-wod': el => { const w = wodById(el.dataset.id); openTpl({id:null, name:`${w.name} (내 버전)`, note:w.note || '', parts:w.parts}); },
   'tpl-cancel': () => { ui.page = ui.tplBack || null; ui.frEdit = false; render(); },
   'tpl-save': () => { const d = ui.tdraft, it = d.items[0];
@@ -1237,11 +1261,11 @@ const A = {
     if (!wodMoves(it).some(m => m.n.trim())) { toast('운동을 하나 이상 적어 주세요'); return; }
     const t = tplFromItem(cleanWod(it, () => {})); t.note = (d.note || '').trim();
     const named = d.kind === 'named', list = named ? state.named : state.mine, builtIn = named && NAMED.some(w => w.id === d.id);
-    if (named) { t.named = true; if (builtIn) t.edited = true; else t.own = true; }
+    if (named) { t.named = true; if (builtIn) t.edited = true; else t.own = true; } else if (d.col && d.col !== 'mine') t.col = d.col;
     if (d.id) { t.id = d.id; const i = list.findIndex(w => w.id === d.id); if (i >= 0) list[i] = t; else list.push(t); } else { t.id = uid(); list.unshift(t); }
-    save(); ui.page = ui.tplBack || null; ui.frEdit = false; ui.wodTab = named ? 'named' : 'mine'; render(); toast(named ? '네임드 WOD에 추가했어요' : '내 WOD에 저장했어요'); },
+    save(); ui.page = ui.tplBack || null; ui.frEdit = false; ui.wodTab = named ? 'named' : d.col || 'mine'; render(); toast(`${tabLabel(ui.wodTab)}에 저장했어요`); },
   'named-reset': el => { if (ui.confirm !== 'named-reset') { ui.confirm = 'named-reset'; return refreshSheet(); } state.named = state.named.filter(w => w.id !== el.dataset.id); save(); ui.confirm = null; closeSheet(); render(true); toast('처음 내용으로 되돌렸어요'); },
-  'del-wod': el => { if (ui.confirm !== 'del-wod') { ui.confirm = 'del-wod'; return refreshSheet(); } state.mine = state.mine.filter(w => w.id !== el.dataset.id); state.named = state.named.filter(w => w.id !== el.dataset.id); save(); ui.confirm = null; closeSheet(); render(true); toast('WOD를 삭제했어요'); },
+  'del-wod': el => { if (ui.confirm !== 'del-wod') { ui.confirm = 'del-wod'; return refreshSheet(); } const id = el.dataset.id; state.mine = state.mine.filter(w => w.id !== id); state.named = state.named.filter(w => w.id !== id); if (NAMED.some(w => w.id === id)) state.hiddenNamed.push(id); save(); ui.confirm = null; closeSheet(); render(true); toast('WOD를 삭제했어요'); },
   // frame chips
   'fr-toggle': () => { ui.frEdit = !ui.frEdit; render(true); },
   'frames-open': () => sheetFrames(),
@@ -1290,13 +1314,13 @@ const A = {
   'del-ex': () => { if (ui.confirm !== 'del-ex') { ui.confirm = 'del-ex'; return refreshSheet(); } state.exercises = state.exercises.filter(e => e.id !== ui.exd.id); save(); ui.confirm = null; closeSheet(); render(true); toast('운동을 삭제했어요'); },
   // stats
   'stat-ex': el => { ui.statEx = el.dataset.v; render(true); },
-  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, unit:state.unit, cats:state.cats, formats:state.formats, patterns:state.patterns}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
+  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, formats:state.formats, patterns:state.patterns}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
   export: () => {
     const blob = new Blob([JSON.stringify({app:'setlog', v:1, saved:new Date().toISOString(), state}, null, 1)], {type:'application/json'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `setlog-backup-${TODAY()}.json`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast('백업 파일을 저장했어요');
   },
-  reset: () => { if (ui.confirm !== 'reset') { ui.confirm = 'reset'; return render(true); } const keep = {cats:state.cats, formats:state.formats, patterns:state.patterns, unit:state.unit}; state = exampleState(); Object.assign(state, keep); ui.confirm = null; save(); render(); toast('예시 데이터를 넣었어요. 지우려면 모든 기록 지우기'); }
+  reset: () => { if (ui.confirm !== 'reset') { ui.confirm = 'reset'; return render(true); } const keep = {cats:state.cats, formats:state.formats, patterns:state.patterns, unit:state.unit, wodTabs:state.wodTabs}; state = exampleState(); Object.assign(state, keep); ui.confirm = null; save(); render(); toast('예시 데이터를 넣었어요. 지우려면 모든 기록 지우기'); }
 };
 function shiftMonth(n) {
   if (ui.view === 'week') { ui.sel = ymd(addDays(parseYmd(ui.sel), 7*n)); ui.month = ui.sel.slice(0, 7); }
@@ -1338,7 +1362,7 @@ document.addEventListener('click', e => {
     lastTap = {ds, t:now}; ui.sel = ds; if (!ds.startsWith(ui.month)) ui.month = ds.slice(0, 7); render(true); return; }
   const el = e.target.closest('[data-action]'); if (!el) return;
   const a = el.dataset.action;
-  if (ui.confirm && !['del-session','cancel-edit','del-plan','del-wod','del-ex','reset','wipe','fe-del','fr-reset','cat-del','named-reset'].includes(a)) ui.confirm = null;
+  if (ui.confirm && !['del-session','cancel-edit','del-plan','del-wod','del-ex','reset','wipe','fe-del','fr-reset','cat-del','named-reset','tab-del'].includes(a)) ui.confirm = null;
   A[a]?.(el);
 });
 document.addEventListener('input', e => {
@@ -1348,6 +1372,7 @@ document.addEventListener('input', e => {
   if (ds.mv !== undefined) { const m = curItems()[+ds.i].parts[+ds.pi].moves[+ds.mv]; if (ds.k === 'w') { const u = mvUnit(m); m.w = /(kg|lb)$/i.test(t.value.trim()) ? t.value : t.value.trim() ? t.value.trim() + u : ''; m.u = u; updateSum(ds.i); return; } m[ds.k] = t.value; if (ds.k === 'n') { m.exId = null; showSug(t, ds); } return; }
   if (ds.patv !== undefined) { const p = curItems()[+ds.i].parts[+ds.patv]; pList(p)[+ds.pk].v = t.value.trim(); const sc = schemeOfP(p); document.querySelectorAll(`input.q[data-i="${ds.i}"][data-pi="${ds.patv}"]`).forEach(q => q.placeholder = sc || '10'); return; }
   if (ds.framepv !== undefined) { ui.frame.pats[+ds.framepv].v = t.value.trim(); return; }
+  if (ds.tabl !== undefined) { const x = state.wodTabs.find(y => y.k === ds.tabl); if (x) { x.label = t.value.trim() || x.label; save(); const b = document.querySelector(`[data-action=wod-tab][data-v="${ds.tabl}"]`); if (b) b.textContent = x.label; } return; }
   if (ds.wn !== undefined) { curItems()[+ds.wn].name = t.value; return; }
   if (ds.pres !== undefined) { const p = curItems()[+ds.i].parts[+ds.pres]; p.res = {...(p.res || {}), v:t.value}; return; }
   if (ds.res) { const it = curItems()[+ds.i]; it.res = {...(it.res || {}), [ds.res]:t.value}; const pv = document.querySelector(`[data-respv="${ds.i}"]`); if (pv) pv.textContent = wodResult(it) || '-'; return; }
