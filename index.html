@@ -168,6 +168,7 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .wsum .sh:first-child{margin-top:0}
 .swatch{width:36px;height:36px;border-radius:50%;border:2px solid transparent;padding:0;outline:2px solid transparent;outline-offset:2px}
 .swatch[aria-pressed="true"]{outline-color:var(--ink)}
+.btnrow>.btn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:8px;padding-right:8px}
 .toast{position:absolute;left:50%;top:18px;transform:translateX(-50%);background:var(--lime);color:#000;padding:10px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:30;white-space:nowrap}
 .search{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;width:100%}
 .cat-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:15px}
@@ -967,6 +968,8 @@ function chartSvg(pts) {
 
 /* ---------- sheets ---------- */
 function noAutofill(root) { root.querySelectorAll('input:not([type=checkbox]):not([type=file]):not([type=date]),textarea').forEach(el => { el.setAttribute('autocomplete', 'off'); el.setAttribute('autocapitalize', 'off'); el.setAttribute('autocorrect', 'off'); el.setAttribute('spellcheck', 'false'); if (!el.name) el.name = 'f' + Math.random().toString(36).slice(2, 8); el.setAttribute('data-lpignore', 'true'); el.setAttribute('data-form-type', 'other'); }); }
+/* every input added anywhere, now or by a later feature, gets the no-autofill settings */
+new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) { if (n.matches('input,textarea')) noAutofill(n.parentNode || n); else if (n.querySelector('input,textarea')) noAutofill(n); } }).observe(document.body, {childList:true, subtree:true});
 function openSheet(html) { $('#sheet').innerHTML = '<div class="grab"></div>' + html; noAutofill($('#sheet')); $('#sheetWrap').hidden = false; }
 function closeSheet() { $('#sheetWrap').hidden = true; ui.sheet = null; }
 function refreshSheet() { if (ui.sheet) { const sh = $('#sheet'), top = sh.scrollTop; ui.sheet(); sh.scrollTop = top; } }
@@ -1023,7 +1026,7 @@ function sheetWod(id) {
     ${w.note ? `<div class="sub">${esc(w.note)}</div>` : ''}${state.formats.find(f => f.id === w.parts[0]?.fmt.id)?.note ? `<div class="card sub" style="color:var(--ink)">${esc(state.formats.find(f => f.id === w.parts[0].fmt.id).note)}</div>` : ''}
     ${hist.length ? `<div class="card list" style="padding:2px 16px">${hist.slice(0, 5).map(({s, it}) => `<button class="it" data-action="open-day" data-date="${s.date}"><span class="n" style="font-size:26px;width:110px">${esc(wodResult(it) || '-')}</span><span class="grow sub">${s.date.replaceAll('-', '.')} · ${esc(it.scale || 'Rx')}</span></button>`).join('')}</div>` : ''}
     <button class="btn lime" data-action="record-wod" data-id="${w.id}">이 WOD로 기록하기</button>
-    ${w.named && !w.own ? `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="named">수정</button><button class="btn out small" data-action="copy-wod" data-id="${w.id}">${esc(tabLabel('mine'))}로 복사</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>${w.edited ? `<button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="named-reset" data-id="${w.id}">${ui.confirm === 'named-reset' ? '한 번 더 누르면 처음 내용으로 돌아가요' : '처음 내용으로 되돌리기'}</button>` : ''}` : `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="${w.own ? 'named' : ''}">수정</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>`}`);
+    ${w.named && !w.own ? `<div class="row btnrow" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="named">수정</button><button class="btn out small" style="flex:1.7" data-action="copy-wod" data-id="${w.id}">${esc(tabLabel('mine'))}로 복사</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>${w.edited ? `<button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="named-reset" data-id="${w.id}">${ui.confirm === 'named-reset' ? '한 번 더 누르면 처음 내용으로 돌아가요' : '처음 내용으로 되돌리기'}</button>` : ''}` : `<div class="row" style="gap:8px"><button class="btn out small" data-action="new-wod" data-id="${w.id}" data-kind="${w.own ? 'named' : ''}">수정</button><button class="btn danger small" data-action="del-wod" data-id="${w.id}">${ui.confirm === 'del-wod' ? '정말 삭제' : '삭제'}</button></div>`}`);
 }
 /* frame sheet: insert a frame between exercises, or change one part's frame */
 function sheetFrame() {
