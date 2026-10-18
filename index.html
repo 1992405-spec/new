@@ -369,16 +369,22 @@ const setsChip = () => chipById('sets') || DEF_FORMATS[0];
 const mvEx = m => (m.exId && exById(m.exId)) || findEx(m.n || '');
 function ensureSets(m) { if (!m.fields) m.fields = mvEx(m)?.fields ? [...mvEx(m).fields] : ['w', 'r']; if (!m.sets?.length) m.sets = [{}]; return m; }
 function fillMoveSets(m, date) { const ex = mvEx(m); if (!ex) return; m.fields = [...ex.fields]; const prev = prevSetsFor(ex.id, date); if (prev) { m.sets = prev.map(x => ({...x})); m.u = prev.wu; } else if (!m.sets?.length) m.sets = [{}]; }
-const partRes = p => (p.fmt?.id !== 'none' && p.fmt?.res) || pList(p).map(x => x.res).find(Boolean) || 'text';
+const partRes = p => p.resT || (p.fmt?.id !== 'none' && p.fmt?.res) || pList(p).map(x => x.res).find(Boolean) || 'text';
 const pList = p => p.pats || (p.pat ? [p.pat] : []);
 const patsLabel = p => pList(p).map(patLabel).filter(Boolean).join(' · ');
 const schemeOfP = p => pList(p).map(schemeOf).find(Boolean) || '';
 /* 구성 lines sit between exercise rows: each has "at" = the row it comes before; a row takes the rep scheme of the last line above it */
-const cfgLines = p => [...(p.fmt?.id && p.fmt.id !== 'none' ? [{kind:'fmt', at:p.fmtAt || 0}] : []), ...pList(p).map((x, k) => ({kind:'pat', k, at:x.at || 0}))].sort((a, b) => a.at - b.at);
+const cfgLines = p => [...(p.fmt?.id && p.fmt.id !== 'none' ? [{kind:'fmt', at:p.fmtAt || 0, o:p.fmtO ?? -1}] : []), ...pList(p).map((x, k) => ({kind:'pat', k, at:x.at || 0, o:x.o ?? k}))].sort((a, b) => a.at - b.at || a.o - b.o);
 /* lines and exercise rows in the order they were added: line(label) and move(m, j) give each one's html */
 const lineLabel = (p, l) => l.kind === 'fmt' ? p.fmt.label : patLabel(pList(p)[l.k]);
 function partFlow(p, line, move) { const L = cfgLines(p), n = p.moves.length, at = j => L.filter(l => j === n ? l.at >= n : l.at === j).map(l => lineLabel(p, l)).filter(Boolean).map(line).join('');
   return p.moves.map((m, j) => at(j) + move(m, j)).join('') + at(n); }
+/* 순서 바꾸기: lines and exercises as one list, so a line moves on its own */
+const flatOf = p => { const L = cfgLines(p), n = p.moves.length, out = []; for (let j = 0; j <= n; j++) { L.filter(l => j === n ? l.at >= n : l.at === j).forEach(l => out.push({l})); if (j < n) out.push({j}); } return out; };
+function setFlat(p, seq) { const ms = p.moves; p.pats = pList(p); delete p.pat; let c = 0;
+  seq.forEach((e, o) => { if (e.l) { if (e.l.kind === 'fmt') { p.fmtAt = c; p.fmtO = o; } else { p.pats[e.l.k].at = c; p.pats[e.l.k].o = o; } } else c++; });
+  p.moves = seq.filter(e => !e.l).map(e => ms[e.j]); }
+const lineName = (p, l) => lineLabel(p, l) || (l.kind === 'fmt' ? p.fmt.label : chipText(pList(p)[l.k])) || '구성';
 const schemeAt = (p, j) => { let sc = ''; for (const l of cfgLines(p)) if (l.kind === 'pat' && l.at <= j) sc = schemeOf(pList(p)[l.k]) || sc; return sc; };
 const oldPat = p => p && !p.tpl ? patFrom(DEF_PATTERNS.find(t => t.id === p.kind) || DEF_PATTERNS[0], p.v) : p;
 /* "없음": a part with no format; the label stays empty so summaries skip it */
@@ -586,7 +592,7 @@ function itemText(it) {
 }
 const summary = s => s.items.map(itemText).join(' · ');
 const setsText = (it, ex) => it.sets.map(x => it.fields.map(k => x[k] ? `${x[k]}${k === 'd' ? ex.unit : ''}` : '').filter(Boolean).join(' × ')).filter(Boolean).join(' · ');
-const resType = it => it.parts?.length > 1 ? 'time' : it.parts?.[0] ? partRes(it.parts[0]) : 'text';
+const resType = it => it.resT || (it.parts?.length > 1 ? 'time' : it.parts?.[0] ? partRes(it.parts[0]) : 'text');
 function fmtRes(v, type) {
   v = String(v || '').trim(); if (!v) return '';
   if (type === 'rr') { const m = v.match(/^(\d+)\s*[+rR]\s*\+?\s*(\d+)$/); if (m) return `${m[1]}R+${m[2]}`; if (/^\d+$/.test(v)) return `${v}R`; }
@@ -654,7 +660,7 @@ const GUIDE = [
   ['기록하기', '+ 구성에서 세트를 넣으면 운동마다 세트별 무게와 횟수를 적어요. 지난 무게가 미리 채워져요.'],
   ['WOD 기록', '+ 구성을 누를 때마다 For Time, 21-15-9 같은 줄이 하나씩 쌓여요. + 구간은 A, B로 나눠 기록해요.'],
   ['WOD 모음', '네임드 WOD와 내가 만든 WOD를 저장해 두고 바로 불러와요. 네임드 WOD도 직접 추가할 수 있어요.'],
-  ['돌아보기', '주간 목표 연속 기록과 운동별 성장 그래프를 봐요.']
+  ['돌아보기', '주간 목표 연속 기록과 최근 12주, WOD 최고 기록을 봐요. 예상 1RM은 운동목록에서 운동을 누르면 나와요.']
 ];
 function showGuide() {
   const g = $('#guide');
@@ -753,7 +759,7 @@ function newDraft(date, plan) {
 }
 function exItem(id, date) { const ex = exById(id); const prev = prevSetsFor(id, date); return {type:'ex', id:uid(), exId:id, fields:[...ex.fields], wu:prev?.wu || U(), sets:prev ? prev.map(x => ({...x})) : [{}], prefilled:!!prev}; }
 const blankMove = () => ({n:'', exId:null, q:'', w:''});
-function wodItem(w) { return {type:'wod', id:uid(), wodId:w.id, name:w.name, scale:'Rx', res:{}, parts:w.parts.map(p => ({fmt:{...p.fmt}, pats:pList(p).map(x => ({...x})), res:{}, moves:p.moves.map(m => { const ex = (m.exId && exById(m.exId)) || findEx(m.n); return {n:ex?.name || m.n, exId:ex?.id || null, q:m.q || '', w:m.w || '', rx:m.w || ''}; })}))}; }
+function wodItem(w) { return {type:'wod', id:uid(), wodId:w.id, name:w.name, scale:'Rx', res:{}, resT:w.resT, parts:w.parts.map(p => ({fmt:{...p.fmt}, fmtAt:p.fmtAt, fmtO:p.fmtO, resT:p.resT, pats:pList(p).map(x => ({...x})), res:{}, moves:p.moves.map(m => { const ex = (m.exId && exById(m.exId)) || findEx(m.n); return {n:ex?.name || m.n, exId:ex?.id || null, q:m.q || '', w:m.w || '', rx:m.w || ''}; })}))}; }
 const dailyItem = () => ({type:'wod', id:uid(), wodId:null, name:'', scale:'Rx', res:{}, parts:[{fmt:{...NO_FMT}, pats:[], res:{}, moves:[blankMove(), blankMove()]}]});
 /* the item list the WOD card is editing: a day's record, or a saved WOD template */
 const curItems = () => ui.page === 'tpl' ? ui.tdraft.items : ui.draft.items;
@@ -840,10 +846,11 @@ function partHtml(it, i, p, pi) {
   const ord = ui.mvOrder === i, first = pi === 0, last = pi === it.parts.length - 1, sm = isSetPart(p);
   const row = (m, j) => sm ? setMoveHtml(i, pi, ensureSets(m), j) : `<div class="mv"><input class="q" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="q" value="${esc(m.q)}" placeholder="${esc(schemeAt(p, j) || '10')}" aria-label="${j+1}번 횟수"><input class="ex" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="n" value="${esc(m.n)}" placeholder="운동" aria-label="${j+1}번 운동"><div class="wcell"><input class="w" data-mv="${j}" data-pi="${pi}" data-i="${i}" data-k="w" value="${esc(wNum(m.w))}" placeholder="-" aria-label="${j+1}번 무게"><button class="wu" data-action="mv-wu" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 무게 단위 바꾸기">${mvUnit(m)}</button></div><button class="icon" data-action="mv-del" data-i="${i}" data-pi="${pi}" data-j="${j}" aria-label="${j+1}번 운동 빼기">✕</button></div>
       <div class="sug" id="sug-${i}-${pi}-${j}"></div>${j < n - 1 ? `<button class="ins" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${j + 1}" aria-label="여기서 구간 나누기"><b>구간 나누기</b></button>` : ''}`;
-  const rows = ord ? p.moves.map((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || schemeAt(p, j) || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && j === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && j === n - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`).join('')
+  const fl = ord ? flatOf(p) : [], fn = fl.length;
+  const rows = ord ? fl.map((e, f) => e.l ? `<div class="mvo"><span class="t" style="color:var(--lime)">${esc(lineName(p, e.l))}</span><button class="icon" data-action="ln-move" data-i="${i}" data-pi="${pi}" data-f="${f}" data-d="-1" ${f === 0 ? 'disabled' : ''} aria-label="구성 위로">↑</button><button class="icon" data-action="ln-move" data-i="${i}" data-pi="${pi}" data-f="${f}" data-d="1" ${f === fn - 1 ? 'disabled' : ''} aria-label="구성 아래로">↓</button></div>` : ((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || schemeAt(p, j) || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && f === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && f === fn - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`)(p.moves[e.j], e.j)).join('')
     : p.moves.map((m, j) => linesAt(j) + (j || sm ? '' : '<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>') + row(m, j)).join('') + linesAt(n);
-  const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${partRes(p) === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, partRes(p))}</div>` : '';
-  const bar = ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-find" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && wodMoves(it).length > 1 ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="chip-add" data-i="${i}" data-pi="${pi}">+ 구성</button><button class="addex" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${n}">+ 구간</button></div>`;
+  const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${partRes(p) === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, partRes(p))}</div><div class="row" style="gap:4px;flex-wrap:wrap">${Object.keys(RES_TYPES).map(k => `<button class="mini-p ${partRes(p) === k ? 'on' : ''}" data-action="part-res-type" data-i="${i}" data-pi="${pi}" data-v="${k}">${RES_TYPES[k].label}</button>`).join('')}</div>` : '';
+  const bar = ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-find" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && (wodMoves(it).length > 1 || it.parts.some(q => cfgLines(q).length)) ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="chip-add" data-i="${i}" data-pi="${pi}">+ 구성</button><button class="addex" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${n}">+ 구간</button></div>`;
   return `<div class="part">${head}${bar}${rows}
     ${pres}</div>`;
 }
@@ -861,6 +868,7 @@ function wodResultBox(it, i) {
   return `<div class="hero" style="display:flex;flex-direction:column;gap:10px">
       <div class="row between"><span class="eb" style="font-weight:700">${it.parts.length > 1 ? '전체 결과' : '결과'}</span><div class="row" style="gap:4px">${['Rx','Scaled'].map(v => `<button class="pill" style="${it.scale === v ? on : off}" data-action="scale" data-i="${i}" data-v="${v}">${v}</button>`).join('')}</div></div>
       <div class="wsum" id="wsum-${i}">${wodSum(it)}</div>
+      <div><div class="sub" style="font-weight:700;margin-bottom:6px">결과 형식</div><div class="row" style="gap:4px;flex-wrap:wrap">${Object.keys(RES_TYPES).map(k => `<button class="pill" style="${type === k ? on : off}" data-action="res-type" data-i="${i}" data-v="${k}">${RES_TYPES[k].label}</button>`).join('')}</div></div>
       <div class="row" style="gap:6px">${[['', '기록'], ['DNF', 'DNF'], ['DONE', 'DONE']].map(([v, l]) => `<button class="pill" style="${st === v ? on : off}" data-action="res-status" data-i="${i}" data-v="${v}">${l}</button>`).join('')}</div>
       ${st === 'DNF' ? `<div class="res"><label>못 채운 렙 (−)<input data-i="${i}" data-res="short" inputmode="numeric" value="${esc(String(it.res?.short ?? '').replace(/^-/, ''))}" placeholder="6"></label></div>` : ''}
       ${type === 'done' && !st ? '<div class="sub" style="font-weight:500">다 했으면 DONE, 못 채웠으면 DNF를 눌러요</div>' : `<div class="res"><label>${st === 'DNF' ? '적고 싶을 때만' : RES_TYPES[type].label}${resInput(`data-i="${i}" data-res="v" class="${type === 'text' ? 'txt' : ''}"`, it.res?.v, type)}</label></div>`}
@@ -962,13 +970,20 @@ function sheetExHistory(id) {
   const ex = exById(id); if (!ex) return closeSheet();
   const hs = hits(id, ex.name), pts = series(id), best = pts.length ? Math.max(...pts.map(p => p.v)) : 0;
   openSheet(`<div class="row between" style="align-items:flex-end"><h2 class="disp" style="font-size:36px">${esc(ex.name)}</h2><button class="pill" data-action="edit-ex" data-id="${id}">편집</button></div>
-    <div class="row wrap" style="gap:6px"><span class="pill lime">기록 ${hs.length}번</span><span class="pill">${exCatOf(ex.cat).label}</span>${hs[0] ? `<span class="pill">마지막 ${md(hs[0].s.date)}</span>` : ''}${best ? `<span class="pill">예상 1RM 최고 ${best}kg</span>` : ''}</div>
+    <div class="row wrap" style="gap:6px"><span class="pill lime">기록 ${hs.length}번</span><span class="pill">${exCatOf(ex.cat).label}</span>${hs[0] ? `<span class="pill">마지막 ${md(hs[0].s.date)}</span>` : ''}</div>
     ${rmCard(ex)}
+    ${ex.fields.includes('w') ? e1rmCard(pts) : ''}
     ${hs.length ? `<div class="card list" style="padding:2px 16px">${hs.map(hitRow).join('')}</div>` : '<div class="empty">아직 이 운동을 기록한 날이 없어요.</div>'}`);
 }
 /* 1RM the user enters by hand: a dated history, newest is the current one */
 /* drop one entry, matched by its values (the sheet may hold an older copy) */
 const rmDrop = (ex, ref) => { const k = (ex.rm || []).findIndex(r => ref && r.date === ref.date && r.v === ref.v && r.u === ref.u); if (k >= 0) ex.rm.splice(k, 1); };
+/* 예상 1RM from logged sets, one point per day */
+function e1rmCard(pts) { const first = pts[0]?.v, last = pts[pts.length-1]?.v, maxV = pts.length ? Math.max(...pts.map(p => p.v)) : 0;
+  return `<div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="row between"><b>예상 1RM</b>${pts.length > 1 ? `<span class="sub" style="color:var(--lime);font-weight:700">${last - first >= 0 ? '+' : ''}${Math.round((last - first)*10)/10}${U()}</span>` : ''}</div>
+    ${pts.length ? `<div class="row" style="align-items:flex-end"><span class="n" style="font-size:58px">${maxV}</span><span class="unit">${U().toUpperCase()} 최고</span></div>` : ''}${pts.length > 1 ? `<div class="chart">${chartSvg(pts)}</div>` : `<div class="empty">${pts.length ? '무게를 기록한 날이 2번 이상 있으면 그래프가 나와요.' : '세트에 무게와 횟수를 적으면 계산돼요.'}</div>`}
+    <div class="sub" style="font-size:11.5px">그날 가장 좋은 세트로 계산해요 (무게 × (1 + 횟수 ÷ 30))</div></div>`; }
 const rmList = ex => (ex.rm || []).slice().sort((a, b) => b.date.localeCompare(a.date));
 const rmNow = ex => rmList(ex)[0];
 function rmCard(ex) {
@@ -1009,9 +1024,6 @@ function viewLib() {
 function viewStats() {
   const now = new Date(), mk = TODAY().slice(0, 7), month = state.sessions.filter(s => s.date.startsWith(mk)).length;
   const wk = weekStats(), keep = planKeepRate();
-  const weighted = state.exercises.filter(e => e.fields.includes('w') && series(e.id).length > 1);
-  if (!weighted.find(e => e.id === ui.statEx) && weighted[0]) ui.statEx = weighted[0].id;
-  const pts = series(ui.statEx), first = pts[0]?.v, last = pts[pts.length-1]?.v, maxV = pts.length ? Math.max(...pts.map(p => p.v)) : 0;
   const days = {}; state.sessions.forEach(s => days[s.date] = (days[s.date] || 0) + 1);
   const start = addDays(mondayOf(now), -77); let heat = '';
   for (let i = 0; i < 84; i++) { const d = addDays(start, i), k = ymd(d); const wd = 'SMTWTFS'[d.getDay()], sun = (d.getDay() === 0 ? ' sun' : '') + (k === TODAY() ? ' today' : '');
@@ -1022,11 +1034,6 @@ function viewStats() {
   <div class="hero"><div class="row between"><span class="eb" style="font-weight:700">주간 목표 연속 달성</span><span class="eb" style="font-weight:700">주 ${state.goal}회 · 이번 주 ${wk.count}회</span></div>
     <div class="row" style="align-items:flex-end"><span class="n" style="font-size:104px">${wk.streak}</span><span class="disp" style="font-size:30px;padding:0 0 10px 6px">주째</span></div>
     <div class="sub" style="font-weight:500">최근 4주 계획 지킴 ${keep.rate}% · ${keep.due - keep.kept ? `놓친 계획 ${keep.due - keep.kept}개` : '놓친 계획 없음'}</div></div>
-  <div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div class="row between"><b>예상 1RM</b>${first ? `<span class="sub" style="color:var(--lime);font-weight:700">${last - first >= 0 ? '+' : ''}${Math.round((last - first)*10)/10}${U()}</span>` : ''}</div>
-    <div class="chips">${weighted.map(e => `<button class="chip sm" aria-pressed="${ui.statEx === e.id}" data-action="stat-ex" data-v="${e.id}">${esc(e.name)}</button>`).join('')}</div>
-    ${pts.length > 1 ? `<div class="row" style="align-items:flex-end"><span class="n" style="font-size:58px">${maxV}</span><span class="unit">${U().toUpperCase()} 최고</span></div><div class="chart">${chartSvg(pts)}</div>` : '<div class="empty">무게를 기록한 날이 2번 이상 있으면 그래프가 나와요.</div>'}
-    <div class="sub" style="font-size:11.5px">그날 가장 좋은 세트로 계산해요 (무게 × (1 + 횟수 ÷ 30))</div></div>
   <div class="card"><div class="row between" style="margin-bottom:10px"><b>최근 12주</b><span class="sub" style="font-size:12px">칸을 누르면 그날 기록</span></div><div class="heat">${heat}</div><div class="hlab">${[0, 4, 8].map(w => `<span style="grid-column:${w + 1} / span 2">${md(ymd(addDays(start, 7*w)))}~</span>`).join('')}<span>이번 주 ▲</span></div></div>
   ${wods.length ? `<div class="card list" style="padding:4px 18px">${wods.map(({w, b}) => `<button class="it" data-action="wod-detail" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:20px"></span><span class="grow t">${esc(w.name)}</span><span class="n" style="font-size:24px">${esc(b.txt)}</span></button>`).join('')}</div>` : ''}
   <div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="row between"><b>테마 색</b><span class="sub" style="font-size:12px">${theme().label}</span></div>
@@ -1220,7 +1227,7 @@ function openTpl(src, kind = 'mine') {
   ui.tplBack = ui.page; ui.tdraft = {id:src?.id || null, kind, note:src?.note || '', items:[it]}; ui.page = 'tpl'; ui.confirm = null; closeSheet(); render();
 }
 /* a saved WOD keeps frames and exercises, not results */
-function tplFromItem(it) { return {id:it.wodId || null, name:(it.name || '').trim() || 'Daily WOD', note:'', parts:it.parts.map(p => ({fmt:{...p.fmt}, pats:pList(p).map(x => ({...x})), moves:p.moves.filter(m => m.n.trim()).map(m => ({n:m.n.trim(), exId:m.exId || null, q:(m.q || '').trim(), w:(m.w || '').trim()}))})).filter(p => p.moves.length)}; }
+function tplFromItem(it) { return {id:it.wodId || null, name:(it.name || '').trim() || 'Daily WOD', note:'', resT:it.resT, parts:it.parts.map(p => ({fmt:{...p.fmt}, fmtAt:p.fmtAt, fmtO:p.fmtO, resT:p.resT, pats:pList(p).map(x => ({...x})), moves:p.moves.filter(m => m.n.trim()).map(m => ({n:m.n.trim(), exId:m.exId || null, q:(m.q || '').trim(), w:(m.w || '').trim()}))})).filter(p => p.moves.length)}; }
 /* drop empty rows; link every exercise name to the exercise list, adding new ones so they show up in search */
 const withUnit = (w, u) => { w = String(w || '').trim(); return /^[\d.]+(\/[\d.]+)?$/.test(w) ? w + (u || U()) : w; };
 function exFor(m, onNew) {
@@ -1268,7 +1275,7 @@ const A = {
   'day-nav': el => { if (el.dataset.v) { ui.dayDate = el.dataset.v; render(); } },
   'edit-session': el => openEditor(JSON.parse(JSON.stringify(state.sessions.find(s => s.id === el.dataset.id)))),
   'del-session': el => { const k = 'del-' + el.dataset.id; if (ui.confirm !== k) { ui.confirm = k; return render(true); } state.sessions = state.sessions.filter(s => s.id !== el.dataset.id); save(); ui.confirm = null; if (!sessionsOn(ui.dayDate).length) ui.page = null; render(); toast('기록을 삭제했어요'); },
-  'stat-ex-go': el => { ui.statEx = el.dataset.v; ui.page = null; ui.tab = 'stats'; render(); },
+  'stat-ex-go': el => sheetExHistory(el.dataset.v),
   // editor
   'cancel-edit': () => { const dirty = ui.draft.items.some(it => !isBlankCard(it)) || ui.draft.memo || ui.draft.title; if (dirty && !ui.draft.id && ui.confirm !== 'cancel') { ui.confirm = 'cancel'; return render(true); } ui.page = ui.draft.id ? 'day' : null; ui.confirm = null; ui.grouping = false; ui.frEdit = false; render(); },
   'save-edit': () => {
@@ -1296,12 +1303,14 @@ const A = {
   'chip-add': el => sheetChipAdd(+el.dataset.i, +el.dataset.pi),
   'chip-add-pick': el => { const i = el.dataset.i, pi = el.dataset.pi, p = curItems()[+i].parts[+pi], x = chipById(el.dataset.v); if (!x) return;
     const before = partRes(p); p.pats = pList(p); delete p.pat;
-    let at = 0; p.moves.forEach((m, j) => { if (m.n.trim()) at = j + 1; });
-    if (chipKind(x) === 'fmt' && p.fmt.id === 'none') { p.fmt = fmtCopy(x); p.fmtAt = at; } else p.pats.push({...patFrom(x, ''), at});
+    /* the first line of a section goes on top; later ones under the last exercise written */
+    let at = 0; if (cfgLines(p).length) p.moves.forEach((m, j) => { if (m.n.trim()) at = j + 1; });
+    const o = Math.max(0, ...cfgLines(p).map(l => l.o)) + 1;
+    if (chipKind(x) === 'fmt' && p.fmt.id === 'none') { p.fmt = fmtCopy(x); p.fmtAt = at; p.fmtO = o; } else p.pats.push({...patFrom(x, ''), at, o});
     if (partRes(p) !== before) p.res = {}; closeSheet(); render(true);
     if (hasN(x)) { const b = document.querySelector(`[data-patv="${pi}"][data-pk="${p.pats.length - 1}"][data-i="${i}"]`); b?.focus(); } },
   'cfg-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], before = partRes(p); p.pats = pList(p); delete p.pat;
-    if (el.dataset.kind === 'fmt') { const k = p.pats.findIndex(y => state.formats.some(f => f.id === y.t)); if (k >= 0) { p.fmt = fmtCopy(chipById(p.pats[k].t)); p.fmtAt = p.pats[k].at || 0; p.pats.splice(k, 1); } else { p.fmt = {...NO_FMT}; delete p.fmtAt; } }
+    if (el.dataset.kind === 'fmt') { const k = p.pats.findIndex(y => state.formats.some(f => f.id === y.t)); if (k >= 0) { p.fmt = fmtCopy(chipById(p.pats[k].t)); p.fmtAt = p.pats[k].at || 0; p.fmtO = p.pats[k].o ?? k; p.pats.splice(k, 1); } else { p.fmt = {...NO_FMT}; delete p.fmtAt; } }
     else p.pats.splice(+el.dataset.k, 1);
     if (partRes(p) !== before) p.res = {}; render(true); },
   'pat-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.pats = pList(p).filter((_, k) => k !== +el.dataset.pk); delete p.pat; render(true); },
@@ -1328,10 +1337,11 @@ const A = {
     m.u = u; if (m.w) m.w = wNum(m.w) + u; el.textContent = u; updateSum(el.dataset.i); },
   'mv-order': el => { ui.mvOrder = ui.mvOrder === +el.dataset.i ? null : +el.dataset.i; render(true); },
   /* move one exercise up or down; past the edge of a section it moves into the next section */
-  'mv-move': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi, j = +el.dataset.j, d = +el.dataset.d, p = it.parts[pi], m = p.moves[j];
-    if (j + d >= 0 && j + d < p.moves.length) { p.moves.splice(j, 1); p.moves.splice(j + d, 0, m); }
+  'mv-move': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi, j = +el.dataset.j, d = +el.dataset.d, p = it.parts[pi], m = p.moves[j], fl = flatOf(p), f = fl.findIndex(e => e.j === j);
+    if (f + d >= 0 && f + d < fl.length) { [fl[f], fl[f + d]] = [fl[f + d], fl[f]]; setFlat(p, fl); }
     else { const q = it.parts[pi + d]; if (!q) return; p.moves.splice(j, 1); if (d < 0) q.moves.push(m); else q.moves.unshift(m); if (!p.moves.length) p.moves.push(blankMove()); }
     render(true); },
+  'ln-move': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], f = +el.dataset.f, d = +el.dataset.d, fl = flatOf(p); if (!fl[f + d]) return; [fl[f], fl[f + d]] = [fl[f + d], fl[f]]; setFlat(p, fl); render(true); },
   'mv-del': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], j = +el.dataset.j; p.moves.splice(j, 1); pList(p).forEach(x => { if ((x.at || 0) > j) x.at--; }); if ((p.fmtAt || 0) > j) p.fmtAt--; if (!p.moves.length) p.moves.push(blankMove()); render(true); },
   'mv-pick': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi], m = p.moves[+el.dataset.j], ex = exById(el.dataset.id); if (ex) { m.n = ex.name; m.exId = ex.id; if (isSetPart(p)) fillMoveSets(m, ui.draft?.date); } render(true); },
   'mv-new': el => { const box = $(`#sug-${el.dataset.i}-${el.dataset.pi}-${el.dataset.j}`); if (box) box.innerHTML = ''; toast('저장하면 새 운동으로 추가돼요'); },
@@ -1343,7 +1353,12 @@ const A = {
   'mv-quick': el => { const it = curItems()[+el.dataset.i], p = it.parts[it.parts.length - 1], ex = exById(el.dataset.id); if (!ex) return;
     putMove(p, ex); render(true); },
   'frame-insert': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi, j = +el.dataset.j, p = it.parts[pi];
-    ui.frame = {mode:'insert', i:+el.dataset.i, pi, j, fmt:'none', pats:[], below:p.moves[j]?.n || ''}; sheetFrame(); },
+    /* split right here: rows from j down, and the 구성 lines among them, go to the new section */
+    const n = p.moves.length, cut = l => j < n && l.at >= j; p.pats = pList(p); delete p.pat;
+    const q = {fmt:{...NO_FMT}, pats:[], res:{}, moves:j < n ? p.moves.splice(j) : [blankMove()]};
+    if (p.fmt.id !== 'none' && cut({at:p.fmtAt || 0})) { q.fmt = p.fmt; q.fmtAt = (p.fmtAt || 0) - j; q.fmtO = p.fmtO; p.fmt = {...NO_FMT}; delete p.fmtAt; }
+    q.pats = p.pats.filter(x => cut({at:x.at || 0})).map(x => ({...x, at:(x.at || 0) - j})); p.pats = p.pats.filter(x => !cut({at:x.at || 0}));
+    if (!p.moves.length) p.moves.push(blankMove()); it.parts.splice(pi + 1, 0, q); render(true); },
   'frame-edit': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi];
     ui.frame = {mode:'edit', i:+el.dataset.i, pi:+el.dataset.pi, fmt:p.fmt.id, pats:pList(p).map(x => ({t:x.t, v:x.v}))}; sheetFrame(); },
   'frame-chip': el => { const f = ui.frame, n = toggleChip(fmtFind(f.fmt) || NO_FMT, f.pats.map(x => ({...patFrom(chipById(x.t), x.v), t:x.t})), el.dataset.v); f.fmt = n.fmt.id; f.pats = n.pats.map(x => ({t:x.t, v:x.v})); refreshSheet(); },
@@ -1359,6 +1374,8 @@ const A = {
     closeSheet(); render(true); },
   'part-del': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi; if (it.parts.length < 2) return; const [p] = it.parts.splice(pi, 1), to = it.parts[Math.max(0, pi - 1)];
     const keep = p.moves.filter(m => m.n.trim()); if (pi === 0) to.moves.unshift(...keep); else to.moves.push(...keep); render(true); toast('구간을 없애고 운동은 앞 구간으로 합쳤어요'); },
+  'res-type': el => { const it = curItems()[+el.dataset.i], v = el.dataset.v; it.resT = v; if (it.parts.length === 1) it.parts[0].resT = v; render(true); },
+  'part-res-type': el => { curItems()[+el.dataset.i].parts[+el.dataset.pi].resT = el.dataset.v; render(true); },
   'part-done': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.res = {...p.res, status:p.res?.status === 'DONE' ? '' : 'DONE'}; render(true); },
   'res-status': el => { const it = curItems()[+el.dataset.i]; it.res = {...(it.res || {}), status:el.dataset.v}; if (!el.dataset.v) delete it.res.short; render(true); },
   'dw-save': el => { const it = ui.draft.items[+el.dataset.i], t = tplFromItem(it);
@@ -1477,7 +1494,6 @@ const A = {
   },
   'del-ex': () => { if (ui.confirm !== 'del-ex') { ui.confirm = 'del-ex'; return refreshSheet(); } state.exercises = state.exercises.filter(e => e.id !== ui.exd.id); save(); ui.confirm = null; closeSheet(); render(true); toast('운동을 삭제했어요'); },
   // stats
-  'stat-ex': el => { ui.statEx = el.dataset.v; render(true); },
   wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, exCats:state.exCats, formats:state.formats, patterns:state.patterns, theme:state.theme}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
   export: () => {
     const blob = new Blob([JSON.stringify({app:'setlog', v:1, saved:new Date().toISOString(), state}, null, 1)], {type:'application/json'});
