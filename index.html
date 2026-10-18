@@ -166,6 +166,8 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .wsum{font-weight:500;line-height:1.55;padding:10px 0;border-top:1px solid rgba(0,0,0,.15);border-bottom:1px solid rgba(0,0,0,.15)}
 .wsum .sh{font-weight:800;margin-top:6px}
 .wsum .sh:first-child{margin-top:0}
+.swatch{width:36px;height:36px;border-radius:50%;border:2px solid transparent;padding:0;outline:2px solid transparent;outline-offset:2px}
+.swatch[aria-pressed="true"]{outline-color:var(--ink)}
 .toast{position:absolute;left:50%;top:18px;transform:translateX(-50%);background:var(--lime);color:#000;padding:10px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:30;white-space:nowrap}
 .search{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;width:100%}
 .cat-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:15px}
@@ -277,6 +279,19 @@ const round25 = x => Math.round(x/2.5)*2.5;
 /* weights are kept in the unit they were typed in; charts and 1RM convert to the chosen unit */
 const LB = 2.20462;
 const U = () => state.unit || 'kg';
+/* theme: only the accent color changes for now */
+const THEMES = [
+  {k:'lime', label:'라임', c:'#C8F031', sub:'#33420A'},
+  {k:'orange', label:'오렌지', c:'#FF9F43', sub:'#5A2E00'},
+  {k:'sky', label:'스카이', c:'#5AC8FA', sub:'#0B3A4F'},
+  {k:'pink', label:'핑크', c:'#FF6FAE', sub:'#5A0F33'},
+  {k:'violet', label:'바이올렛', c:'#B39DFF', sub:'#2E1F66'},
+  {k:'yellow', label:'옐로', c:'#FFD60A', sub:'#4D3D00'},
+  {k:'white', label:'화이트', c:'#F2F2F2', sub:'#4A4A4A'}
+];
+const theme = () => THEMES.find(t => t.k === state.theme) || THEMES[0];
+const accent = () => theme().c;
+function applyTheme() { const t = theme(), r = document.documentElement.style; r.setProperty('--lime', t.c); r.setProperty('--lime-sub', t.sub); }
 const wuOf = it => it.wu || 'kg';
 const conv = (v, from, to) => from === to ? v : to === 'lb' ? v * LB : v / LB;
 const e1rm = (w, r) => (w > 0 && r > 0) ? w * (1 + r/30) : 0;
@@ -928,6 +943,8 @@ function viewStats() {
     <div class="sub" style="font-size:11.5px">그날 가장 좋은 세트로 계산해요 (무게 × (1 + 횟수 ÷ 30))</div></div>
   <div class="card"><div class="row between" style="margin-bottom:10px"><b>최근 12주</b><span class="sub" style="font-size:12px">칸을 누르면 그날 기록</span></div><div class="heat">${heat}</div><div class="hlab">${[0, 4, 8].map(w => `<span style="grid-column:${w + 1} / span 2">${md(ymd(addDays(start, 7*w)))}~</span>`).join('')}<span>이번 주 ▲</span></div></div>
   ${wods.length ? `<div class="card list" style="padding:4px 18px">${wods.map(({w, b}) => `<button class="it" data-action="wod-detail" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:20px"></span><span class="grow t">${esc(w.name)}</span><span class="n" style="font-size:24px">${esc(b.txt)}</span></button>`).join('')}</div>` : ''}
+  <div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="row between"><b>테마 색</b><span class="sub" style="font-size:12px">${theme().label}</span></div>
+    <div class="row" style="gap:10px;flex-wrap:wrap">${THEMES.map(t => `<button class="swatch" aria-pressed="${theme().k === t.k}" data-action="theme" data-v="${t.k}" aria-label="${t.label}" style="background:${t.c}"></button>`).join('')}</div></div>
   <div class="card row between"><b>무게 단위</b><span class="unitsw">${['kg','lb'].map(u => `<button aria-pressed="${U() === u}" data-action="unit" data-v="${u}">${u}</button>`).join('')}</span></div>
   <button class="card row between" data-action="guide" style="border:0;color:var(--ink);width:100%;text-align:left"><span><b style="display:block">사용 예시 보기</b><span class="sub" style="font-size:12px">처음 켰을 때 본 사용 예시를 다시 봐요</span></span><span class="pill lime">보기</span></button>
   <div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="row between"><b>내 데이터</b><span class="sub" style="font-size:12px">기록 ${state.sessions.length}개 · 이 기기에만 저장</span></div>
@@ -945,7 +962,7 @@ function chartSvg(pts) {
   let g = ''; for (let v = lo; v <= hi; v += step) g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="#2a2a2a"/><text x="${L-6}" y="${y(v)+3}" text-anchor="end" fill="#8C8C8C" font-size="10">${v}</text>`;
   const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join(''), lp = pts[pts.length-1];
   const lab = [pts[0], pts[Math.floor(pts.length/2)], lp].map((p, i) => `<text x="${x(p.date)}" y="${H-5}" text-anchor="${['start','middle','end'][i]}" fill="#8C8C8C" font-size="10">${md(p.date)}</text>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="예상 1RM ${pts[0].v}${U()}에서 ${lp.v}${U()}">${g}<path d="${line}L${x(lp.date)},${H-B}L${L},${H-B}Z" fill="#C8F031" opacity=".12"/><path d="${line}" fill="none" stroke="#C8F031" stroke-width="2.5" stroke-linejoin="round"/><circle cx="${x(lp.date)}" cy="${y(lp.v)}" r="5" fill="#C8F031"/><text x="${x(lp.date)+8}" y="${y(lp.v)+4}" fill="#F2F2F2" font-size="13" font-weight="700">${lp.v}</text>${lab}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="예상 1RM ${pts[0].v}${U()}에서 ${lp.v}${U()}">${g}<path d="${line}L${x(lp.date)},${H-B}L${L},${H-B}Z" fill="${accent()}" opacity=".12"/><path d="${line}" fill="none" stroke="${accent()}" stroke-width="2.5" stroke-linejoin="round"/><circle cx="${x(lp.date)}" cy="${y(lp.v)}" r="5" fill="${accent()}"/><text x="${x(lp.date)+8}" y="${y(lp.v)+4}" fill="#F2F2F2" font-size="13" font-weight="700">${lp.v}</text>${lab}</svg>`;
 }
 
 /* ---------- sheets ---------- */
@@ -1222,6 +1239,7 @@ const A = {
   'add-set': el => { const it = ui.draft.items[+el.dataset.i]; it.sets.push({...(it.sets[it.sets.length-1] || {})}); render(true); },
   'del-set': el => { ui.draft.items[+el.dataset.i].sets.pop(); render(true); },
   wu: el => { const it = ui.draft.items[+el.dataset.i]; it.wu = el.dataset.v; render(true); },
+  theme: el => { state.theme = el.dataset.v; save(); applyTheme(); render(true); },
   unit: el => { state.unit = el.dataset.v; save(); render(true); refreshSheet(); toast(`기본 무게 단위를 ${el.dataset.v}로 바꿨어요`); },
   scale: el => { curItems()[+el.dataset.i].scale = el.dataset.v; render(true); },
   // plan editor
@@ -1314,13 +1332,13 @@ const A = {
   'del-ex': () => { if (ui.confirm !== 'del-ex') { ui.confirm = 'del-ex'; return refreshSheet(); } state.exercises = state.exercises.filter(e => e.id !== ui.exd.id); save(); ui.confirm = null; closeSheet(); render(true); toast('운동을 삭제했어요'); },
   // stats
   'stat-ex': el => { ui.statEx = el.dataset.v; render(true); },
-  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, formats:state.formats, patterns:state.patterns}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
+  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, formats:state.formats, patterns:state.patterns, theme:state.theme}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
   export: () => {
     const blob = new Blob([JSON.stringify({app:'setlog', v:1, saved:new Date().toISOString(), state}, null, 1)], {type:'application/json'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `setlog-backup-${TODAY()}.json`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast('백업 파일을 저장했어요');
   },
-  reset: () => { if (ui.confirm !== 'reset') { ui.confirm = 'reset'; return render(true); } const keep = {cats:state.cats, formats:state.formats, patterns:state.patterns, unit:state.unit, wodTabs:state.wodTabs}; state = exampleState(); Object.assign(state, keep); ui.confirm = null; save(); render(); toast('예시 데이터를 넣었어요. 지우려면 모든 기록 지우기'); }
+  reset: () => { if (ui.confirm !== 'reset') { ui.confirm = 'reset'; return render(true); } const keep = {cats:state.cats, formats:state.formats, patterns:state.patterns, unit:state.unit, wodTabs:state.wodTabs, theme:state.theme}; state = exampleState(); Object.assign(state, keep); ui.confirm = null; save(); render(); toast('예시 데이터를 넣었어요. 지우려면 모든 기록 지우기'); }
 };
 function shiftMonth(n) {
   if (ui.view === 'week') { ui.sel = ymd(addDays(parseYmd(ui.sel), 7*n)); ui.month = ui.sel.slice(0, 7); }
@@ -1388,7 +1406,7 @@ document.addEventListener('change', e => {
   if (e.target.id !== 'importFile' || !e.target.files[0]) return;
   e.target.files[0].text().then(txt => { const d = JSON.parse(txt), s = d.state || d;
     if (!Array.isArray(s.sessions) || !Array.isArray(s.exercises) || !Array.isArray(s.plans)) throw new Error('bad');
-    state = migrate({mine:[], goal:4, ...s}); save(); render(); toast(`기록 ${state.sessions.length}개를 불러왔어요`);
+    state = migrate({mine:[], goal:4, ...s}); save(); applyTheme(); render(); toast(`기록 ${state.sessions.length}개를 불러왔어요`);
   }).catch(() => toast('이 파일은 불러올 수 없어요'));
 });
 document.addEventListener('change', e => { const k = e.target.dataset.catf; if (k) { ui.hidden = e.target.checked ? ui.hidden.filter(x => x !== k) : [...new Set([...ui.hidden, k])]; render(true); } });
@@ -1442,6 +1460,7 @@ function endEdge() {
 document.addEventListener('touchend', endEdge);
 document.addEventListener('touchcancel', endEdge);
 
+applyTheme();
 render();
 try { if (!localStorage.getItem(GUIDE_KEY) && !/[?&]noguide/.test(location.search)) showGuide(); } catch (e) {}
 </script>
