@@ -177,6 +177,10 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .vchart .l{font-size:10.5px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
 .vchart .on .l{color:var(--lime);font-weight:700}
 .vchart .v{font-family:var(--num);font-weight:700;font-size:13px}
+.chk{width:28px;height:28px;border-radius:8px;border:1.5px solid #444;display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:#000;flex-shrink:0}
+.chk.on{background:var(--lime);border-color:var(--lime)}
+.snsprev{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
+.snsprev img{width:70%;max-width:260px;flex-shrink:0;border-radius:12px;border:1px solid #2a2a2a}
 .vline{display:flex;align-items:baseline;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .vline.lime{border-top-color:rgba(0,0,0,.15)}.vline.lime .eb,.vline.lime .unit{color:var(--lime-sub)}
 .card.list .vline{padding:12px 0 10px;margin-top:0}
@@ -714,7 +718,7 @@ function render(keep) {
 /* usage guide: example screenshots shown on the very first launch and again from 돌아보기 */
 const GUIDE_KEY = 'setlog-guide-seen';
 const GUIDE = [
-  ['캘린더', '날짜를 누르면 그날 기록과 볼륨이 보여요. 색 막대는 기록, 테두리만 있는 건 계획, 오른쪽 숫자는 그 주 볼륨이에요.'],
+  ['캘린더', '날짜를 두 번 누르면 그날 기록과 볼륨이 보여요. 오른쪽 숫자는 그 주 볼륨, 이미지로 저장은 SNS용 사진을 만들어요.'],
   ['기록하기', '+ 구성에서 세트를 넣으면 운동마다 세트별 무게와 횟수를 적어요. 지난 무게가 미리 채워져요.'],
   ['WOD 기록', '+ 구성을 누를 때마다 For Time, 21-15-9 같은 줄이 하나씩 쌓여요. + 구간은 A, B로 나눠 기록해요.'],
   ['WOD 모음', '네임드 WOD와 내가 만든 WOD를 저장해 두고 바로 불러와요. 네임드 WOD도 직접 추가할 수 있어요.'],
@@ -732,6 +736,103 @@ function showGuide() {
     $('#gdots').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === i)); $('#gnext').textContent = i === GUIDE.length - 1 ? '시작하기' : '다음'; }, {passive:true});
 }
 function closeGuide() { $('#guide').hidden = true; $('#guide').innerHTML = ''; try { localStorage.setItem(GUIDE_KEY, '1'); } catch (e) {} }
+
+/* ---------- 이미지로 저장: day / week / month cards drawn on a canvas, sized for SNS (4:5 feed or 9:16 story) ---------- */
+const SNS = {feed:{w:1080, h:1350, label:'피드 4:5'}, story:{w:1080, h:1920, label:'스토리 9:16'}};
+const F = {num:"'Barlow Condensed','Arial Narrow',sans-serif", disp:"'Black Han Sans','Noto Sans KR',sans-serif", body:"'Noto Sans KR','Apple SD Gothic Neo',sans-serif"};
+function fitTxt(g, t, w) { t = String(t || ''); if (g.measureText(t).width <= w) return t; while (t && g.measureText(t + '…').width > w) t = t.slice(0, -1); return t + '…'; }
+function rr(g, x, y, w, h, r, fill) { g.beginPath(); g.roundRect(x, y, w, h, r); g.fillStyle = fill; g.fill(); }
+function txt(g, t, x, y, font, color, align = 'left', maxW) { g.font = font; g.fillStyle = color; g.textAlign = align; g.textBaseline = 'alphabetic'; g.fillText(maxW ? fitTxt(g, t, maxW) : t, x, y); }
+/* lines that describe one record, shortest first */
+function sessLines(s) { const out = [];
+  for (const it of s.items) {
+    if (it.type === 'wod') { out.push({b:true, t:[it.name || 'WOD', wodResult(it)].filter(Boolean).join('  ')});
+      for (const p of it.parts) partFlow(p, t => out.push({t, lime:true}), (m, j) => { if (m.n.trim()) out.push({t:m.sets?.length ? `${m.n} ${setsText(m, mvEx(m) || {unit:'km'})}` : [m.q ? qTxt(m.q) : schemeAt(p, j), m.n.trim(), m.w].filter(Boolean).join(' ')}); }); }
+    else { const ex = exById(it.exId) || {name:'운동', unit:'km'}; out.push({t:`${ex.name}  ${setsText(it, ex)}${it.fields.includes('w') ? ' ' + wuOf(it) : ''}`}); } }
+  return out; }
+function snsFrame(g, W, H, eyebrow) { g.fillStyle = '#0B0B0B'; g.fillRect(0, 0, W, H); txt(g, eyebrow, 72, 110, `700 30px ${F.body}`, accent()); txt(g, 'SETLOG', W - 72, H - 64, `800 34px ${F.num}`, '#555', 'right'); }
+function volBig(g, v, x, y, size, color) { const n = kgTxt(v); txt(g, n, x, y, `800 ${size}px ${F.num}`, color); g.font = `800 ${size}px ${F.num}`; txt(g, U().toUpperCase(), x + g.measureText(n).width + 12, y, `700 ${Math.round(size * .3)}px ${F.num}`, color === '#0A0A0A' ? '#33420A' : '#8C8C8C'); }
+function drawDay(g, W, H, ds) {
+  const list = sessionsOn(ds), d = parseYmd(ds), t = volSum(list.map(volOfSession));
+  snsFrame(g, W, H, ds === TODAY() ? '오늘의 운동' : '그날의 운동');
+  txt(g, md(ds), 72, 250, `400 150px ${F.disp}`, '#F2F2F2'); g.font = `400 150px ${F.disp}`; txt(g, WD[d.getDay()], 72 + g.measureText(md(ds)).width + 20, 250, `400 64px ${F.disp}`, '#F2F2F2');
+  let y = 300;
+  rr(g, 72, y, W - 144, 210, 36, accent());
+  txt(g, '그날 볼륨', 108, y + 62, `700 30px ${F.body}`, '#33420A');
+  txt(g, [t.reps ? `맨몸 ${t.reps}회` : '', t.km ? kmTxt(t.km) : '', list.reduce((a, s) => a + (+s.duration || 0), 0) ? `${list.reduce((a, s) => a + (+s.duration || 0), 0)}분` : ''].filter(Boolean).join(' · '), W - 108, y + 62, `700 30px ${F.body}`, '#33420A', 'right');
+  if (t.kg) volBig(g, t.kg, 108, y + 180, 120, '#0A0A0A'); else txt(g, `기록 ${list.length}개`, 108, y + 170, `800 96px ${F.num}`, '#0A0A0A');
+  y += 250;
+  if (!list.length) { txt(g, '이날은 기록이 없어요', 72, y + 60, `500 40px ${F.body}`, '#8C8C8C'); return; }
+  const room = H - 140 - y, per = Math.max(150, Math.floor(room / list.length) - 24);
+  for (const s of list) { if (y > H - 260) break;
+    const lines = sessLines(s), maxL = Math.max(1, Math.floor((per - 120) / 46)), hh = Math.min(per, 110 + Math.min(lines.length, maxL) * 46 + (lines.length > maxL ? 40 : 0));
+    rr(g, 72, y, W - 144, hh, 32, '#171717'); rr(g, 72, y + 34, 10, 44, 5, catOf(sessionCat(s)).color);
+    txt(g, s.title || '운동', 112, y + 72, `400 46px ${F.disp}`, '#F2F2F2', 'left', W - 520);
+    const v = volOfSession(s); if (v.kg) txt(g, `${kgTxt(v.kg)}${U()}`, W - 108, y + 72, `800 48px ${F.num}`, accent(), 'right');
+    lines.slice(0, maxL).forEach((l, k) => txt(g, l.t, 112, y + 126 + k * 46, `${l.b || l.lime ? 700 : 500} 32px ${F.body}`, l.lime ? accent() : l.b ? '#F2F2F2' : '#BDBDBD', 'left', W - 260));
+    if (lines.length > maxL) txt(g, `외 ${lines.length - maxL}줄`, 112, y + 126 + maxL * 46, `500 28px ${F.body}`, '#8C8C8C');
+    y += hh + 24; }
+}
+function drawWeek(g, W, H, ds) {
+  const d0 = addDays(parseYmd(ds), -parseYmd(ds).getDay()), days = Array.from({length:7}, (_, i) => ymd(addDays(d0, i)));
+  const ss = days.flatMap(sessionsOn), t = volSum(ss.map(volOfSession)), dv = days.map(x => volSum(sessionsOn(x).map(volOfSession)).kg), max = Math.max(...dv, 1);
+  snsFrame(g, W, H, days.includes(TODAY()) ? '이번 주 운동' : '주간 운동');
+  txt(g, `${md(days[0])} – ${md(days[6])}`, 72, 230, `400 96px ${F.disp}`, '#F2F2F2');
+  let y = 280; rr(g, 72, y, W - 144, 210, 36, accent());
+  txt(g, '주간 볼륨', 108, y + 62, `700 30px ${F.body}`, '#33420A'); txt(g, `운동 ${new Set(ss.map(s => s.date)).size}일 · ${ss.length}개`, W - 108, y + 62, `700 30px ${F.body}`, '#33420A', 'right');
+  volBig(g, t.kg, 108, y + 180, 120, '#0A0A0A');
+  y += 250; const rowH = Math.floor((H - 160 - y) / 7);
+  days.forEach((x, i) => { const yy = y + i * rowH, list = sessionsOn(x);
+    rr(g, 72, yy, W - 144, rowH - 14, 26, '#171717');
+    const mid = yy + (rowH - 14) / 2 + 12;
+    txt(g, WD[i], 108, mid, `400 40px ${F.disp}`, i === 0 ? '#FF6B6B' : '#F2F2F2'); txt(g, String(parseYmd(x).getDate()), 168, mid, `700 36px ${F.num}`, '#8C8C8C');
+    if (!list.length) { txt(g, '휴식', 232, mid, `500 30px ${F.body}`, '#555'); return; }
+    list.slice(0, 2).forEach((s, k) => { const yk = list.length > 1 ? mid - 22 + k * 40 : mid; rr(g, 232, yk - 24, 8, 28, 4, catOf(sessionCat(s)).color); txt(g, s.title || '운동', 256, yk, `700 30px ${F.body}`, '#F2F2F2', 'left', 440); });
+    if (dv[i]) { rr(g, W - 330, mid - 16, 120, 14, 7, '#2A2A2A'); rr(g, W - 330, mid - 16, Math.max(8, Math.round(120 * dv[i] / max)), 14, 7, accent()); txt(g, kgShort(dv[i]), W - 108, mid, `800 40px ${F.num}`, '#F2F2F2', 'right'); }
+    else { const km = volSum(list.map(volOfSession)).km; if (km) txt(g, kmTxt(km), W - 108, mid, `800 40px ${F.num}`, '#8C8C8C', 'right'); } });
+}
+function drawMonth(g, W, H, ds) {
+  const [y0, m0] = ds.split('-').map(Number), first = new Date(y0, m0 - 1, 1), last = new Date(y0, m0, 0), mk = ds.slice(0, 7);
+  const ss = state.sessions.filter(s => s.date.startsWith(mk)), t = volSum(ss.map(volOfSession));
+  snsFrame(g, W, H, `${y0} · ${mk === TODAY().slice(0, 7) ? '이번 달 운동' : '월간 운동'}`);
+  txt(g, `${m0}월`, 72, 250, `400 160px ${F.disp}`, '#F2F2F2'); g.font = `400 160px ${F.disp}`; const mw = g.measureText(`${m0}월`).width;
+  txt(g, String(new Set(ss.map(s => s.date)).size), 72 + mw + 30, 250, `800 170px ${F.num}`, accent()); g.font = `800 170px ${F.num}`;
+  txt(g, '일', 72 + mw + 30 + g.measureText(String(new Set(ss.map(s => s.date)).size)).width + 12, 250, `400 56px ${F.disp}`, '#F2F2F2');
+  let y = 300; rr(g, 72, y, W - 144, 170, 36, accent());
+  txt(g, '월간 볼륨', 108, y + 58, `700 30px ${F.body}`, '#33420A'); txt(g, [t.reps ? `맨몸 ${t.reps}회` : '', t.km ? kmTxt(t.km) : ''].filter(Boolean).join(' · '), W - 108, y + 58, `700 30px ${F.body}`, '#33420A', 'right');
+  volBig(g, t.kg, 108, y + 145, 92, '#0A0A0A');
+  y += 210; const rows = Math.ceil((first.getDay() + last.getDate()) / 7), gw = W - 144, cw = (gw - 6 * 10) / 7, legend = 70, ch = Math.min(170, Math.floor((H - 150 - legend - y - 50) / rows) - 10);
+  WD.forEach((w, i) => txt(g, w, 72 + i * (cw + 10) + cw / 2, y + 30, `700 26px ${F.body}`, i === 0 ? '#FF6B6B' : '#8C8C8C', 'center')); y += 50;
+  for (let n = 0; n < rows * 7; n++) { const day = n - first.getDay() + 1, x = 72 + (n % 7) * (cw + 10), yy = y + Math.floor(n / 7) * (ch + 10);
+    if (day < 1 || day > last.getDate()) continue; const dd = `${mk}-${pad(day)}`, list = sessionsOn(dd);
+    rr(g, x, yy, cw, ch, 18, list.length ? '#1C1C1C' : '#121212');
+    txt(g, String(day), x + 14, yy + 40, `700 32px ${F.num}`, n % 7 === 0 ? '#FF6B6B' : list.length ? '#F2F2F2' : '#555');
+    list.slice(0, 3).forEach((s, k) => rr(g, x + 12, yy + 58 + k * 18, cw - 24, 10, 5, catOf(sessionCat(s)).color)); }
+  y += rows * (ch + 10) + 30;
+  let lx = 72; for (const c of cats().filter(c => ss.some(s => sessionCat(s) === c.k))) { rr(g, lx, y, 34, 12, 6, c.color); txt(g, c.label, lx + 46, y + 14, `500 28px ${F.body}`, '#BDBDBD'); g.font = `500 28px ${F.body}`; lx += 46 + g.measureText(c.label).width + 36; }
+}
+async function snsImages(kinds, size, ds) { try { await document.fonts.ready; } catch (e) {}
+  const {w, h} = SNS[size], out = [];
+  for (const k of ['m', 'w', 'd'].filter(k => kinds.includes(k))) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+    (k === 'd' ? drawDay : k === 'w' ? drawWeek : drawMonth)(g, w, h, ds);
+    out.push({k, name:`setlog-${k === 'd' ? ds : k === 'w' ? 'week-' + ds : ds.slice(0, 7)}.png`, url:c.toDataURL('image/png'), canvas:c}); }
+  return out; }
+function sheetSnsImg() {
+  ui.sheet = sheetSnsImg; const o = ui.sns || (ui.sns = {kinds:['d'], size:'feed', imgs:null});
+  const KIND = [['m', '월', `${parseYmd(ui.sel).getMonth() + 1}월 전체`], ['w', '주', (() => { const d0 = addDays(parseYmd(ui.sel), -parseYmd(ui.sel).getDay()); return `${md(ymd(d0))} – ${md(ymd(addDays(d0, 6)))}`; })()], ['d', '일', dayLabel(ui.sel)]];
+  openSheet(`<h2 class="disp" style="font-size:30px">이미지로 저장</h2>
+    <div class="sub">캘린더에서 고른 날짜(${md(ui.sel)})를 기준으로 만들어요. 여러 개를 고르면 한 장씩 만들어져요.</div>
+    <div class="card list" style="padding:2px 16px">${KIND.map(([k, l, sub]) => `<button class="it" data-action="sns-kind" data-v="${k}" aria-pressed="${o.kinds.includes(k)}"><span class="chk ${o.kinds.includes(k) ? 'on' : ''}">${o.kinds.includes(k) ? '✓' : ''}</span><span class="grow"><span class="t" style="display:block">${l}</span><span class="sub">${esc(sub)}</span></span></button>`).join('')}</div>
+    <div class="card row between"><span>사진 크기</span><span class="unitsw">${Object.entries(SNS).map(([k, s]) => `<button aria-pressed="${o.size === k}" data-action="sns-size" data-v="${k}">${s.label}</button>`).join('')}</span></div>
+    ${o.imgs ? `<div class="snsprev">${o.imgs.map(x => `<img src="${x.url}" alt="${x.name}">`).join('')}</div><div class="sub">사진을 길게 눌러도 저장할 수 있어요.</div>` : ''}
+    <button class="btn lime" data-action="sns-make" ${o.kinds.length ? '' : 'disabled'}>${o.imgs ? `이미지 ${o.imgs.length}장 저장하기` : '이미지 만들기'}</button>`);
+}
+async function snsSave(imgs) {
+  const files = await Promise.all(imgs.map(x => new Promise(r => x.canvas.toBlob(b => r(new File([b], x.name, {type:'image/png'})), 'image/png'))));
+  try { if (navigator.canShare?.({files})) { await navigator.share({files}); return toast('저장할 곳을 골라주세요'); } } catch (e) { if (e?.name === 'AbortError') return; }
+  for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); }
+  toast(`이미지 ${files.length}장을 저장했어요`);
+}
 
 /* calendar */
 function viewCal() {
@@ -759,7 +860,7 @@ function viewCal() {
     body = groups.map(g => `<div><div class="eb" style="margin:0 0 4px;${g.ds === t ? 'color:var(--lime)' : ''}">${dayLabel(g.ds)}${g.ds === t ? ' · 오늘' : ''}</div><div class="card list" style="padding:4px 16px">${g.ev.map(e => entryRow(e, g.ds)).join('')}</div></div>`).join('') || '<div class="empty">표시할 기록이나 계획이 없어요.</div>';
   }
   const sel = parseYmd(ui.sel), ev = entriesOn(ui.sel);
-  return `<div class="row between"><button class="pill ghost" data-action="cat-filter" aria-label="카테고리와 목표 설정">☰ 보기 설정</button><span class="pill">이번 주 ${wk.count} / ${state.goal}회</span></div>
+  return `<div class="row between"><button class="pill ghost" data-action="cat-filter" aria-label="카테고리와 목표 설정">☰ 보기 설정</button><div class="row" style="gap:6px"><button class="pill lime" data-action="sns-open">이미지로 저장</button><span class="pill">이번 주 ${wk.count} / ${state.goal}회</span></div></div>
   <div class="row between" style="align-items:flex-end">
     ${ui.view === 'list' ? '<h1 class="disp" style="font-size:64px">목록</h1>' : `<div class="row" style="align-items:flex-end;gap:2px"><button class="icon" data-action="month" data-v="-1" aria-label="이전">‹</button><h1 class="disp" style="font-size:${ui.view === 'week' ? 40 : 72}px;white-space:nowrap">${ui.view === 'week' ? `${sel.getMonth()+1}월 ${Math.ceil((sel.getDate() + new Date(sel.getFullYear(), sel.getMonth(), 1).getDay()) / 7)}주` : `${vm}월`}</h1><button class="icon" data-action="month" data-v="1" aria-label="다음">›</button></div>`}
     <div class="row" style="gap:5px;padding-bottom:10px">${[['month','월'],['week','주'],['list','목록']].map(([k, l]) => `<button class="pill" aria-pressed="${ui.view === k}" data-action="view" data-v="${k}">${l}</button>`).join('')}</div>
@@ -1366,6 +1467,10 @@ const A = {
   'close-sheet': () => closeSheet(),
   'close-page': () => { ui.page = null; ui.confirm = null; render(); },
   'cat-filter': () => sheetCatFilter(),
+  'sns-open': () => { ui.sns = null; sheetSnsImg(); },
+  'sns-kind': el => { const o = ui.sns, k = el.dataset.v; o.kinds = o.kinds.includes(k) ? o.kinds.filter(x => x !== k) : [...o.kinds, k]; o.imgs = null; refreshSheet(); },
+  'sns-size': el => { ui.sns.size = el.dataset.v; ui.sns.imgs = null; refreshSheet(); },
+  'sns-make': async () => { const o = ui.sns; if (o.imgs) return snsSave(o.imgs); o.imgs = await snsImages(o.kinds, o.size, ui.sel); refreshSheet(); },
   'week-vol': el => { state.weekVol = el.dataset.v === 'on'; save(); render(true); refreshSheet(); },
   goal: el => { state.goal = Math.min(7, Math.max(1, state.goal + +el.dataset.v)); save(); render(true); refreshSheet(); },
   view: el => { ui.view = el.dataset.v; render(true); },
