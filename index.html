@@ -76,6 +76,11 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 
 /* calendar */
 .cal{touch-action:pan-y;user-select:none;-webkit-user-select:none}
+/* long press anywhere: no text selection, no link/image preview; typing fields and the SNS previews (long press = save photo) keep theirs */
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+.snsprev img{-webkit-touch-callout:default}
+img{-webkit-user-drag:none}
 .dow,.wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .dow span{text-align:center;font-size:11px;color:var(--mut);padding-bottom:4px}
 .dow span:first-child{color:var(--red)}
@@ -1749,7 +1754,8 @@ document.addEventListener('pointerup', e => {
   press = null;
 });
 document.addEventListener('pointercancel', () => { if (press) clearTimeout(press.timer); press = null; });
-document.addEventListener('contextmenu', e => { if (e.target.closest('#cal,#recBtn,[data-lp]')) e.preventDefault(); });
+document.addEventListener('contextmenu', e => { if (!e.target.closest('input,textarea,.snsprev img')) e.preventDefault(); });
+document.addEventListener('selectstart', e => { if (!e.target.closest?.('input,textarea')) e.preventDefault(); });
 
 document.addEventListener('click', e => {
   if (swallowClick) { swallowClick = false; e.preventDefault(); return; }
