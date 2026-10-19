@@ -177,6 +177,9 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .vchart .l{font-size:10.5px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
 .vchart .on .l{color:var(--lime);font-weight:700}
 .vchart .v{font-family:var(--num);font-weight:700;font-size:13px}
+.vline{display:flex;align-items:baseline;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.vline.lime{border-top-color:rgba(0,0,0,.15)}.vline.lime .eb,.vline.lime .unit{color:var(--lime-sub)}
+.card.list .vline{padding:12px 0 10px;margin-top:0}
 .vrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
 .vrow:first-child{border-top:0}
 .vrow i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle}
@@ -778,6 +781,10 @@ function entryRow(e, ds) {
 }
 
 /* day view */
+/* a record card's volume as its last line; onLime = inside the lime result card */
+function volLine(v, onLime) { if (!v.kg && !v.reps && !v.km) return '';
+  const extra = [v.reps ? `맨몸 ${v.reps}회` : '', v.km ? kmTxt(v.km) : ''].filter(Boolean).join(' · ');
+  return `<div class="vline ${onLime ? 'lime' : ''}"><span class="eb" style="font-weight:700">볼륨</span><span class="grow"></span>${extra ? `<span class="eb" style="font-weight:700">${extra}</span>` : ''}${v.kg ? `<span class="n" style="font-size:26px">${kgTxt(v.kg)}</span><span class="unit">${U().toUpperCase()}</span>` : ''}</div>`; }
 /* one record's volume as pills under its title */
 function sessVolPills(s) { const v = volOfSession(s), p = [v.kg ? `<span class="pill lime">볼륨 ${kgTxt(v.kg)}${U()}</span>` : '', v.reps ? `<span class="pill">맨몸 ${v.reps}회</span>` : '', v.km ? `<span class="pill">${kmTxt(v.km)}</span>` : ''].filter(Boolean);
   return p.length ? `<div class="row wrap" style="gap:6px;margin-top:10px">${p.join('')}</div>` : ''; }
@@ -806,7 +813,7 @@ function dayVolHtml(ds, list) {
   const wk = ymd(addDays(parseYmd(ds), -7)), last = volBetween(wk, wk).kg, d = t.kg - last, max = Math.max(...rows.map(r => r.v.kg), 1);
   const pills = [t.km ? `거리 ${kmTxt(t.km)}` : '', dur ? `운동 시간 ${dur}분` : '', t.reps ? `맨몸 ${t.reps}회` : ''].filter(Boolean);
   return `<div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div class="row between"><b>그날 볼륨</b>${last && t.kg ? `<span class="sub" style="font-size:12px">지난주 ${WD[parseYmd(ds).getDay()]}요일보다 <b style="color:var(--lime)">${d >= 0 ? '+' : '−'}${kgTxt(Math.abs(d))}${U()}</b></span>` : ''}</div>
+    <div class="row between"><b>그날 볼륨</b>${last && t.kg && Math.round(d) ? `<span class="sub" style="font-size:12px">지난주 ${WD[parseYmd(ds).getDay()]}요일보다 <b style="color:var(--lime)">${d >= 0 ? '+' : '−'}${kgTxt(Math.abs(d))}${U()}</b></span>` : ''}</div>
     ${t.kg ? `<div class="row" style="align-items:flex-end"><span class="n" style="font-size:56px;color:var(--lime)">${kgTxt(t.kg)}</span><span class="unit">${U().toUpperCase()}</span></div>` : ''}
     ${pills.length ? `<div class="row wrap" style="gap:6px">${pills.map(p => `<span class="pill">${p}</span>`).join('')}</div>` : ''}
     ${rows.length > 1 ? `<div>${rows.map(({s, v}) => `<div class="vrow"><span class="grow"><i style="background:${catOf(sessionCat(s)).color}"></i>${esc(s.title || '운동')}</span>${v.kg ? `<span class="vtrack"><span style="width:${Math.round(v.kg / max * 100)}%;background:${catOf(sessionCat(s)).color}"></span></span><span class="n">${kgTxt(v.kg)}</span>` : `<span class="sub">${[v.km ? kmTxt(v.km) : '', v.reps ? v.reps + '회' : ''].filter(Boolean).join(' · ')}</span>`}</div>`).join('')}</div>` : ''}</div>`;
@@ -829,12 +836,12 @@ function pageDay() {
     const wodHero = s.items.filter(i => i.type === 'wod').map(it => { const b = bestWod(it.wodId, s.id), multi = it.parts.length > 1, p0 = it.parts[0];
       return `<div class="hero"><div class="row between"><span class="eb" style="font-weight:700">${esc(it.name || 'WOD')}</span><span class="pill" style="background:#000;color:var(--lime);border-color:#000;font-weight:700">${esc(it.scale || 'Rx')}</span></div>
       <div class="n" style="font-size:100px;margin-top:2px">${esc(wodResult(it) || '-')}</div><div class="sub">${it.wodId ? b ? `이전 최고 ${esc(b.txt)}` : '첫 기록' : ''}${it.partner ? ` · 파트너 ${esc(it.partner)}` : ''}</div>
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.parts.map((p, pi) => `${multi ? `<div style="font-weight:800;margin-top:${pi ? 8 : 0}px">${esc([String.fromCharCode(65 + pi), partResult(p)].filter(Boolean).join(' · '))}</div>` : ''}${partFlow(p, t => `<div style="font-weight:800">${esc(t)}</div>`, (m, j) => `<div>${esc(m.sets?.length ? `${m.n} ${setsText(m, mvEx(m) || {unit:'km'})}${m.fields?.includes('w') ? ' ' + (m.u || 'kg') : ''}` : [m.q ? qTxt(m.q) : schemeAt(p, j), m.n, m.w].filter(Boolean).join(' '))}</div>`)}`).join('')}</div></div>`; }).join('');
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.parts.map((p, pi) => `${multi ? `<div style="font-weight:800;margin-top:${pi ? 8 : 0}px">${esc([String.fromCharCode(65 + pi), partResult(p)].filter(Boolean).join(' · '))}</div>` : ''}${partFlow(p, t => `<div style="font-weight:800">${esc(t)}</div>`, (m, j) => `<div>${esc(m.sets?.length ? `${m.n} ${setsText(m, mvEx(m) || {unit:'km'})}${m.fields?.includes('w') ? ' ' + (m.u || 'kg') : ''}` : [m.q ? qTxt(m.q) : schemeAt(p, j), m.n, m.w].filter(Boolean).join(' '))}</div>`)}`).join('')}</div>${volLine(volOfItem(it), true)}</div>`; }).join('');
     return `<div><div class="eb">${s.mood ? `${s.mood} ${MOODS.find(m => m[0] === s.mood)?.[1] || ''}` : ''}</div><h1 class="disp" style="font-size:52px;margin-top:4px">${esc(s.title || '운동')}</h1>
-      <div class="sub" style="margin-top:6px">${[s.duration ? `${s.duration}분` : '', s.place, plan ? `${repeatText(plan)} 계획` : ''].filter(Boolean).map(esc).join(' · ')}</div>${sessVolPills(s)}</div>
+      <div class="sub" style="margin-top:6px">${[s.duration ? `${s.duration}분` : '', s.place, plan ? `${repeatText(plan)} 계획` : ''].filter(Boolean).map(esc).join(' · ')}</div></div>
       ${heroHtml}${wodHero}
       ${s.items.some(i => i.type === 'ex') ? `<div class="card list">${s.items.filter(i => i.type === 'ex').map((it, n) => { const ex = exById(it.exId) || {name:'삭제된 운동', unit:'km'};
-        return `<div class="it"><span class="n" style="font-size:26px;width:16px;color:var(--mut)">${n+1}</span><span class="grow"><span class="t" style="display:block">${esc(ex.name)}</span><span class="sub">${esc(setsText(it, ex))}${it.fields.includes('w') ? ' ' + wuOf(it) : ''}</span></span></div>`; }).join('')}</div>` : ''}
+        return `<div class="it"><span class="n" style="font-size:26px;width:16px;color:var(--mut)">${n+1}</span><span class="grow"><span class="t" style="display:block">${esc(ex.name)}</span><span class="sub">${esc(setsText(it, ex))}${it.fields.includes('w') ? ' ' + wuOf(it) : ''}</span></span></div>`; }).join('')}${volLine(volSum(s.items.filter(i => i.type === 'ex').map(volOfItem)))}</div>` : ''}
       ${s.memo ? `<div class="card"><div class="eb" style="margin-bottom:6px">메모</div><div style="line-height:1.6">${esc(s.memo)}</div></div>` : ''}
       <div class="row" style="gap:8px"><button class="btn out small" data-action="edit-session" data-id="${s.id}">수정</button><button class="btn danger small" data-action="del-session" data-id="${s.id}">${ui.confirm === 'del-' + s.id ? '한 번 더 누르면 삭제' : '삭제'}</button></div>`;
   }).join('<div style="height:8px;border-top:1px solid var(--line)"></div>')}</div>`;
