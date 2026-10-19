@@ -1233,7 +1233,6 @@ function viewStats() {
   const start = addDays(mondayOf(now), -77); let heat = '';
   for (let i = 0; i < 84; i++) { const d = addDays(start, i), k = ymd(d); const wd = 'SMTWTFS'[d.getDay()], sun = (d.getDay() === 0 ? ' sun' : '') + (k === TODAY() ? ' today' : '');
     heat += d > now ? `<i class="f">${wd}</i>` : days[k] ? `<button class="${days[k] > 1 ? 'w' : 'l'}${sun.includes('today') ? ' today' : ''}" data-action="open-day" data-date="${k}" aria-label="${dayLabel(k)} 기록 보기">${wd}</button>` : `<i class="${sun}">${wd}</i>`; }
-  const wods = [...allNamed(), ...state.mine].map(w => ({w, b:bestWod(w.id)})).filter(x => x.b);
   return `<div class="row between"><span class="eb">돌아보기</span><span class="pill">${now.getFullYear()}.${pad(now.getMonth()+1)}</span></div>
   <div class="row" style="align-items:flex-end;gap:10px"><h1 class="disp" style="font-size:60px">${now.getMonth()+1}월</h1><span class="n" style="font-size:70px;color:var(--lime)">${month}</span><span class="disp" style="font-size:30px;padding-bottom:6px">회</span></div>
   <div class="hero"><div class="row between"><span class="eb" style="font-weight:700">주간 목표 연속 달성</span><span class="eb" style="font-weight:700">주 ${state.goal}회 · 이번 주 ${wk.count}회</span></div>
@@ -1241,7 +1240,6 @@ function viewStats() {
     <div class="sub" style="font-weight:500">최근 4주 계획 지킴 ${keep.rate}% · ${keep.due - keep.kept ? `놓친 계획 ${keep.due - keep.kept}개` : '놓친 계획 없음'}</div></div>
   ${volCardHtml()}
   <div class="card"><div class="row between" style="margin-bottom:10px"><b>최근 12주</b><span class="sub" style="font-size:12px">칸을 누르면 그날 기록</span></div><div class="heat">${heat}</div><div class="hlab">${[0, 4, 8].map(w => `<span style="grid-column:${w + 1} / span 2">${md(ymd(addDays(start, 7*w)))}~</span>`).join('')}<span>이번 주 ▲</span></div></div>
-  ${wods.length ? `<div class="card list" style="padding:4px 18px">${wods.map(({w, b}) => `<button class="it" data-action="wod-detail" data-id="${w.id}"><span class="bar" style="background:var(--orange);height:20px"></span><span class="grow t">${esc(w.name)}</span><span class="n" style="font-size:24px">${esc(b.txt)}</span></button>`).join('')}</div>` : ''}
   <div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="row between"><b>테마 색</b><span class="sub" style="font-size:12px">${theme().label}</span></div>
     <div class="row" style="gap:10px;flex-wrap:wrap">${THEMES.map(t => `<button class="swatch" aria-pressed="${theme().k === t.k}" data-action="theme" data-v="${t.k}" aria-label="${t.label}" style="background:${t.c}"></button>`).join('')}</div></div>
   <div class="card row between"><b>무게 단위</b><span class="unitsw">${['kg','lb'].map(u => `<button aria-pressed="${U() === u}" data-action="unit" data-v="${u}">${u}</button>`).join('')}</span></div>
@@ -1267,6 +1265,8 @@ function chartSvg(pts) {
 /* ---------- sheets ---------- */
 function noAutofill(root) { root.querySelectorAll('input:not([type=checkbox]):not([type=file]):not([type=date]),textarea').forEach(el => { el.setAttribute('autocomplete', 'off'); el.setAttribute('autocapitalize', 'off'); el.setAttribute('autocorrect', 'off'); el.setAttribute('spellcheck', 'false'); if (!el.name) el.name = 'f' + Math.random().toString(36).slice(2, 8); el.setAttribute('data-lpignore', 'true'); el.setAttribute('data-form-type', 'other'); }); }
 /* every input added anywhere, now or by a later feature, gets the no-autofill settings */
+/* last guard: whatever field gets focus, from any screen added later, is cleaned right before the keyboard opens */
+document.addEventListener('focusin', e => { const t = e.target; if (t.matches?.('input,textarea') && t.getAttribute('autocomplete') !== 'off' && !['checkbox', 'file', 'date', 'radio', 'range'].includes(t.type)) noAutofill(t.parentNode || t); }, true);
 new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) { if (n.matches('input,textarea')) noAutofill(n.parentNode || n); else if (n.querySelector('input,textarea')) noAutofill(n); } }).observe(document.body, {childList:true, subtree:true});
 function openSheet(html) { $('#sheet').innerHTML = '<div class="grab"></div>' + html; noAutofill($('#sheet')); $('#sheetWrap').hidden = false; }
 function closeSheet() { $('#sheetWrap').hidden = true; ui.sheet = null; }
