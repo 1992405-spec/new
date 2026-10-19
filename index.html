@@ -80,8 +80,10 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .dow span{text-align:center;font-size:11px;color:var(--mut);padding-bottom:4px}
 .dow span:first-child{color:var(--red)}
 .wk{margin-top:4px}
-.cal.wvol .dow,.cal.wvol .wk{grid-template-columns:repeat(7,minmax(0,1fr)) 34px}
+.cal.wvol .dow,.cal.wvol .wk{grid-template-columns:repeat(7,minmax(0,1fr)) 36px}
 .wk .wv{align-self:center;text-align:right;font-family:var(--num);font-weight:700;font-size:12.5px;color:var(--ink);white-space:nowrap}
+.wk .wv small{display:block;font-family:var(--body);font-weight:500;font-size:9.5px;color:var(--mut);margin-top:1px}
+.evol{display:flex;align-items:baseline;flex-shrink:0}.evol .n{font-size:22px}
 .dow .wv{text-align:right;font-size:10px}
 .dc{height:62px;min-width:0;border-radius:10px;background:#141414;border:0;padding:5px 4px;display:flex;flex-direction:column;gap:3px;position:relative;text-align:left;-webkit-touch-callout:none}
 .dc .d{font-family:var(--num);font-weight:700;font-size:15px;color:#cfcfcf;line-height:1}
@@ -590,7 +592,7 @@ const plansOn = ds => ds < TODAY() ? [] : state.plans.filter(p => planOn(p, ds) 
 const repeatText = p => p.repeat === 'none' ? '한 번' : p.repeat === 'daily' ? '매일' : p.repeat === 'monthly' ? `매월 ${parseYmd(p.start).getDate()}일` : `매주 ${(p.days || []).slice().sort().map(d => WD[d]).join('·')}`;
 const planContents = p => p.wodId ? (wodById(p.wodId)?.name || '') : (p.exIds || []).map(id => exById(id)?.name).filter(Boolean).join(', ');
 function entriesOn(ds) {
-  const s = sessionsOn(ds).map(x => ({kind:'s', id:x.id, title:x.title || '운동', cat:sessionCat(x), meta:summary(x)}));
+  const s = sessionsOn(ds).map(x => ({kind:'s', id:x.id, title:x.title || '운동', cat:sessionCat(x), meta:summary(x), vol:volOfSession(x).kg}));
   const p = plansOn(ds).map(x => ({kind:'p', id:x.id, title:x.title, cat:x.cat, meta:[repeatText(x), planContents(x)].filter(Boolean).join(' · ')}));
   return [...s, ...p].filter(e => !ui.hidden.includes(e.cat));
 }
@@ -670,6 +672,8 @@ const volOfSession = s => volSum(s.items.map(volOfItem));
 const volBetween = (from, to) => volSum(state.sessions.filter(s => s.date >= from && s.date <= to).map(volOfSession));
 const kgTxt = v => Math.round(v).toLocaleString('en-US');
 const kgShort = v => v >= 1000 ? `${Math.round(v / 100) / 10}${U() === 'kg' ? 't' : 'k'}` : `${Math.round(v)}`;
+/* calendar week column: number on top, unit under it */
+const volUnitTxt = v => v >= 1000 ? `${Math.round(v / 100) / 10}<small>${U() === 'kg' ? '톤' : 'k lb'}</small>` : `${Math.round(v)}<small>${U()}</small>`;
 const kmTxt = v => `${Math.round(v * 10) / 10}km`;
 function weekStats() {
   const days = new Set(state.sessions.map(s => s.date)), mon = mondayOf(new Date());
@@ -738,7 +742,7 @@ function viewCal() {
         h += `<button class="dc ${d.getMonth() !== vm - 1 ? 'out' : ''} ${c === 0 ? 'sun' : ''} ${ds === t ? 'today' : ''} ${ds === ui.sel ? 'sel' : ''}" data-date="${ds}" aria-label="${dayLabel(ds)} ${ev.length ? ev.map(e => e.title).join(', ') : '기록 없음'}">
           <span class="d">${d.getDate()}</span>${mood ? `<span class="s">${mood}</span>` : ''}
           ${ev.length ? `<span class="bs">${ev.slice(0, ev.length > 4 ? 3 : 4).map(e => `<span class="b ${e.kind === 'p' ? 'plan' : ''}" style="${e.kind === 'p' ? 'border-color' : 'background'}:${catOf(e.cat).color}"></span>`).join('')}${ev.length > 4 ? `<span class="more">+${ev.length - 3}</span>` : ''}</span>` : ''}</button>`; }
-      if (wv) { const v = volBetween(ymd(addDays(start, r*7)), ymd(addDays(start, r*7 + 6))); h += `<span class="wv">${v.kg ? kgShort(v.kg) : v.km ? kmTxt(v.km) : ''}</span>`; }
+      if (wv) { const v = volBetween(ymd(addDays(start, r*7)), ymd(addDays(start, r*7 + 6))); h += `<span class="wv">${v.kg ? volUnitTxt(v.kg) : v.km ? `${Math.round(v.km * 10) / 10}<small>km</small>` : ''}</span>`; }
       h += '</div>'; }
     body = `<div class="cal ${wv ? 'wvol' : ''}" id="cal"><div class="dow">${WD.map(w => `<span>${w}</span>`).join('')}${wv ? '<span class="wv">볼륨</span>' : ''}</div>${h}</div>`;
   } else if (ui.view === 'week') {
@@ -757,7 +761,7 @@ function viewCal() {
     ${ui.view === 'list' ? '<h1 class="disp" style="font-size:64px">목록</h1>' : `<div class="row" style="align-items:flex-end;gap:2px"><button class="icon" data-action="month" data-v="-1" aria-label="이전">‹</button><h1 class="disp" style="font-size:${ui.view === 'week' ? 40 : 72}px;white-space:nowrap">${ui.view === 'week' ? `${sel.getMonth()+1}월 ${Math.ceil((sel.getDate() + new Date(sel.getFullYear(), sel.getMonth(), 1).getDay()) / 7)}주` : `${vm}월`}</h1><button class="icon" data-action="month" data-v="1" aria-label="다음">›</button></div>`}
     <div class="row" style="gap:5px;padding-bottom:10px">${[['month','월'],['week','주'],['list','목록']].map(([k, l]) => `<button class="pill" aria-pressed="${ui.view === k}" data-action="view" data-v="${k}">${l}</button>`).join('')}</div>
   </div>
-  <div class="row between"><span class="sub">${vy}년 · 두 번 누르면 바로 기록, 길게 누르면 메뉴</span><button class="pill lime" data-action="go-today">오늘</button></div>
+  <div class="row between"><span class="sub">${vy}년 · 두 번 누르면 그날 기록, 길게 누르면 메뉴</span><button class="pill lime" data-action="go-today">오늘</button></div>
   ${body}
   ${ui.view !== 'list' ? `<div class="legend">${cats().filter(c => !ui.hidden.includes(c.k)).map(c => `<span><i style="background:${c.color}"></i>${c.label}</span>`).join('')}<span><i style="border:1.5px dashed #888;height:6px"></i>계획</span></div>
   <div class="eb" style="${ui.sel === TODAY() ? 'color:var(--lime)' : ''}">${dayLabel(ui.sel)}${ui.sel === TODAY() ? ' · 오늘' : ''}</div>
@@ -770,10 +774,13 @@ function entryRow(e, ds) {
     <span class="disp" style="font-size:22px;width:24px;text-align:center;color:${e.kind === 'p' ? 'var(--mut)' : 'var(--ink)'}">${WD[d.getDay()]}</span>
     <span class="bar ${e.kind === 'p' ? 'plan' : ''}" style="${e.kind === 'p' ? 'border-color' : 'background'}:${catOf(e.cat).color}"></span>
     <span class="grow"><span class="t" style="display:block">${esc(e.title)}</span><span class="meta" style="display:block">${esc(e.meta)}</span></span>
-    <span class="pill ${e.kind === 'p' ? 'lime' : ''}">${e.kind === 'p' ? (ds === TODAY() ? '오늘 계획' : '계획') : '완료'}</span></button>`;
+    ${e.kind === 's' && e.vol ? `<span class="evol"><span class="n">${kgTxt(e.vol)}</span><span class="unit">${U().toUpperCase()}</span></span>` : `<span class="pill ${e.kind === 'p' ? 'lime' : ''}">${e.kind === 'p' ? (ds === TODAY() ? '오늘 계획' : '계획') : '완료'}</span>`}</button>`;
 }
 
 /* day view */
+/* one record's volume as pills under its title */
+function sessVolPills(s) { const v = volOfSession(s), p = [v.kg ? `<span class="pill lime">볼륨 ${kgTxt(v.kg)}${U()}</span>` : '', v.reps ? `<span class="pill">맨몸 ${v.reps}회</span>` : '', v.km ? `<span class="pill">${kmTxt(v.km)}</span>` : ''].filter(Boolean);
+  return p.length ? `<div class="row wrap" style="gap:6px;margin-top:10px">${p.join('')}</div>` : ''; }
 /* the whole day's volume, split by record */
 /* 돌아보기: volume by week (last 8, Monday start) or by month (last 6); a bar can be picked to see its split */
 function volPeriods(mode) { const now = new Date(), out = [];
@@ -808,7 +815,7 @@ function pageDay() {
   const ds = ui.dayDate, list = sessionsOn(ds);
   const dates = [...new Set(sorted().map(s => s.date))], i = dates.indexOf(ds);
   const prev = dates[i - 1], next = dates[i + 1];
-  if (!list.length) return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button></div><div class="empty">이날은 기록이 없어요.</div>`;
+  if (!list.length) return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button><span class="eb">${md(ds)} ${WD[parseYmd(ds).getDay()]}</span></div><div class="empty">이날은 기록이 없어요.</div>${ds <= TODAY() ? `<button class="btn lime" data-action="day-record" data-date="${ds}">+ ${md(ds)} 기록하기</button>` : ''}`;
   return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button><div class="row" style="gap:4px"><button class="icon" data-action="day-nav" data-v="${prev || ''}" ${prev ? '' : 'disabled style="opacity:.25"'} aria-label="이전 기록">‹</button><span class="eb">${md(ds)} ${WD[parseYmd(ds).getDay()]}</span><button class="icon" data-action="day-nav" data-v="${next || ''}" ${next ? '' : 'disabled style="opacity:.25"'} aria-label="다음 기록">›</button></div><span style="width:70px"></span></div>
   <div id="daySwipe" style="touch-action:pan-y;display:flex;flex-direction:column;gap:16px">${dayVolHtml(ds, list)}${list.map(s => {
     const plan = state.plans.find(p => p.id === s.planId);
@@ -824,7 +831,7 @@ function pageDay() {
       <div class="n" style="font-size:100px;margin-top:2px">${esc(wodResult(it) || '-')}</div><div class="sub">${it.wodId ? b ? `이전 최고 ${esc(b.txt)}` : '첫 기록' : ''}${it.partner ? ` · 파트너 ${esc(it.partner)}` : ''}</div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.15);font-weight:500;line-height:1.6">${it.parts.map((p, pi) => `${multi ? `<div style="font-weight:800;margin-top:${pi ? 8 : 0}px">${esc([String.fromCharCode(65 + pi), partResult(p)].filter(Boolean).join(' · '))}</div>` : ''}${partFlow(p, t => `<div style="font-weight:800">${esc(t)}</div>`, (m, j) => `<div>${esc(m.sets?.length ? `${m.n} ${setsText(m, mvEx(m) || {unit:'km'})}${m.fields?.includes('w') ? ' ' + (m.u || 'kg') : ''}` : [m.q ? qTxt(m.q) : schemeAt(p, j), m.n, m.w].filter(Boolean).join(' '))}</div>`)}`).join('')}</div></div>`; }).join('');
     return `<div><div class="eb">${s.mood ? `${s.mood} ${MOODS.find(m => m[0] === s.mood)?.[1] || ''}` : ''}</div><h1 class="disp" style="font-size:52px;margin-top:4px">${esc(s.title || '운동')}</h1>
-      <div class="sub" style="margin-top:6px">${[s.duration ? `${s.duration}분` : '', s.place, plan ? `${repeatText(plan)} 계획` : ''].filter(Boolean).map(esc).join(' · ')}</div></div>
+      <div class="sub" style="margin-top:6px">${[s.duration ? `${s.duration}분` : '', s.place, plan ? `${repeatText(plan)} 계획` : ''].filter(Boolean).map(esc).join(' · ')}</div>${sessVolPills(s)}</div>
       ${heroHtml}${wodHero}
       ${s.items.some(i => i.type === 'ex') ? `<div class="card list">${s.items.filter(i => i.type === 'ex').map((it, n) => { const ex = exById(it.exId) || {name:'삭제된 운동', unit:'km'};
         return `<div class="it"><span class="n" style="font-size:26px;width:16px;color:var(--mut)">${n+1}</span><span class="grow"><span class="t" style="display:block">${esc(ex.name)}</span><span class="sub">${esc(setsText(it, ex))}${it.fields.includes('w') ? ' ' + wuOf(it) : ''}</span></span></div>`; }).join('')}</div>` : ''}
@@ -1360,6 +1367,7 @@ const A = {
   record: () => ui.tab === 'cal' && ui.sel > TODAY() ? openPlan(newPlanDraft(ui.sel)) : openEditor(newDraft(ui.tab === 'cal' ? ui.sel : TODAY())),
   'record-on': el => openEditor(newDraft(el.dataset.date)),
   'open-day': el => openDay(el.dataset.date),
+  'day-record': el => openEditor(newDraft(el.dataset.date)),
   'plan-detail': el => sheetPlanDetail(el.dataset.id, el.dataset.date),
   'record-plan': el => openEditor(newDraft(el.dataset.date, state.plans.find(p => p.id === el.dataset.id))),
   'skip-plan': el => { const p = state.plans.find(x => x.id === el.dataset.id); (p.skip ||= []).push(el.dataset.date); save(); closeSheet(); render(true); toast('이번 계획을 건너뛰었어요'); },
@@ -1633,7 +1641,7 @@ document.addEventListener('click', e => {
   const tab = e.target.closest('.tab'); if (tab) { ui.tab = tab.dataset.tab; ui.page = null; ui.confirm = null; closeSheet(); return render(); }
   const dc = e.target.closest('[data-date]:not([data-action])');
   if (dc) { const ds = dc.dataset.date, now = Date.now();
-    if (lastTap.ds === ds && now - lastTap.t < 350) { lastTap = {ds:null, t:0}; if (ds > TODAY()) openPlan(newPlanDraft(ds)); else openEditor(newDraft(ds)); return; }
+    if (lastTap.ds === ds && now - lastTap.t < 350) { lastTap = {ds:null, t:0}; if (ds > TODAY() && !sessionsOn(ds).length) openPlan(newPlanDraft(ds)); else openDay(ds); return; }
     lastTap = {ds, t:now}; ui.sel = ds; if (!ds.startsWith(ui.month)) ui.month = ds.slice(0, 7); render(true); return; }
   const el = e.target.closest('[data-action]'); if (!el) return;
   const a = el.dataset.action;
