@@ -197,6 +197,8 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .vrow i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle}
 .vrow .vtrack{flex:0 0 80px;height:8px;border-radius:4px;background:#262626;overflow:hidden;display:flex}
 .vrow .n{font-size:18px;min-width:56px;text-align:right}
+.vbtn{border:1.5px solid var(--lime-ink);border-radius:99px;padding:4px 11px;font-size:12px;font-weight:700;background:none;color:var(--lime-ink)}
+.vbtn.on{background:var(--lime-ink);color:var(--lime)}
 .cvol{border-top:1px solid rgba(0,0,0,.15);padding-top:10px;display:flex;flex-direction:column;gap:6px}
 .cvol .li{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;border-top:1px solid rgba(0,0,0,.12);font-weight:500}
 .cvol .li:first-child{border-top:0}
@@ -684,6 +686,7 @@ const repsIn = q => { q = String(q || '').trim().replace(/\s*회$/, ''); let m;
   return 0; };
 const kmIn = q => { const m = String(q || '').trim().match(/^([\d.]+)\s*(km|m)$/i); return m ? (m[2].toLowerCase() === 'm' ? m[1] / 1000 : +m[1]) : 0; };
 const wIn = m => { const x = String(m.w || '').match(/[\d.]+/); return x ? conv(+x[0], mvUnit(m), U()) : 0; };
+const hasVolFix = it => it.volFix && it.volFix.v !== '' && isFinite(+it.volFix.v);
 function volOfItem(it) {
   const v = {kg:0, reps:0, km:0, by:{}}, add = (name, kg) => { v.kg += kg; if (name) v.by[name] = (v.by[name] || 0) + kg; };
   const sets = (name, list, fields, u, unit) => { for (const x of list || []) { const w = +x.w || 0, r = +x.r || 0;
@@ -698,6 +701,9 @@ function volOfItem(it) {
       const r = repsIn(m.q) || (m.q ? 0 : repsIn(schemeAt(p, j))), w = wIn(m);
       if (r && w) add(name, r * w * rounds); else if (r) v.reps += r * rounds; else v.km += kmIn(m.q) * rounds; });
   }
+  /* the calculation can miss formats like EMOM or Team of 2, so a card's weight volume can be typed over (volFix) */
+  if (hasVolFix(it)) { const k = conv(+it.volFix.v, it.volFix.u || U(), U()), f = v.kg ? k / v.kg : 0;
+    v.by = f ? Object.fromEntries(Object.entries(v.by).map(([n, x]) => [n, x * f])) : {}; v.kg = k; v.fixed = true; }
   return v;
 }
 const volSum = list => list.reduce((a, b) => ({kg:a.kg + b.kg, reps:a.reps + b.reps, km:a.km + b.km}), {kg:0, reps:0, km:0});
@@ -1085,12 +1091,17 @@ function wodSum(it) {
     const any = p.moves.some(m => m.n.trim()), ms = partFlow(p, t => `<div class="sh">${esc(t)}</div>`, (m, j) => m.n.trim() ? `<div>${esc([m.q ? qTxt(m.q) : schemeAt(p, j), m.n.trim(), m.w].filter(Boolean).join(' '))}</div>` : '');
     return `${head ? `<div class="sh">${esc(head)}</div>` : ''}${ms}${any ? '' : '<div style="opacity:.5">운동을 적으면 여기에 보여요</div>'}`; }).join('');
 }
-function updateSum(i) { const el = document.getElementById(`wsum-${i}`), it = curItems()?.[+i]; const vb = document.getElementById(`wvol-${i}`); if (vb && it?.type === 'wod') vb.innerHTML = cardVolHtml(it); if (el && it?.type === 'wod') el.innerHTML = wodSum(it); const pv = document.querySelector(`[data-respv="${i}"]`); if (pv && it?.type === 'wod') pv.textContent = wodResult(it) || '-'; }
+function updateSum(i) { const el = document.getElementById(`wsum-${i}`), it = curItems()?.[+i]; const vb = document.getElementById(`wvol-${i}`); if (vb && it?.type === 'wod') vb.innerHTML = cardVolHtml(it, i); if (el && it?.type === 'wod') el.innerHTML = wodSum(it); const pv = document.querySelector(`[data-respv="${i}"]`); if (pv && it?.type === 'wod') pv.textContent = wodResult(it) || '-'; }
 /* the card's own volume, under its result */
-function cardVolHtml(it) { const v = volOfItem(it), by = Object.entries(v.by).sort((a, b) => b[1] - a[1]);
-  if (!v.kg && !v.reps && !v.km) return '';
+function cardVolHtml(it, i) { const v = volOfItem(it), by = Object.entries(v.by).sort((a, b) => b[1] - a[1]);
+  const can = i !== undefined && !setsOnlyCard(it), edit = can && ui.volEdit === String(i);
+  if (edit) { const auto = volOfItem({...it, volFix:null}).kg;
+    return `<div class="cvol"><div class="row between"><span class="eb" style="font-weight:700">이 카드 볼륨 직접 적기</span><span class="eb">자동 계산 ${kgTxt(auto)}${U()}</span></div>
+    <div class="row" style="gap:8px;align-items:center"><div class="res grow"><label><input data-volfix="${i}" inputmode="decimal" value="${hasVolFix(it) ? esc(String(it.volFix.v)) : ''}" placeholder="${Math.round(auto) || 0}" aria-label="이 카드 볼륨 (${U()})"></label></div><span class="unit" style="color:var(--lime-sub)">${U().toUpperCase()}</span></div>
+    <div class="row" style="gap:6px">${hasVolFix(it) ? `<button class="vbtn" data-action="vol-auto" data-i="${i}">자동 계산으로</button>` : ''}<span class="grow"></span><button class="vbtn on" data-action="vol-edit" data-i="${i}">완료</button></div></div>`; }
+  if (!v.kg && !v.reps && !v.km) return can && wodMoves(it).some(m => (m.n || '').trim()) ? `<div class="cvol"><button class="vbtn" style="align-self:flex-start" data-action="vol-edit" data-i="${i}">+ 볼륨 직접 적기</button></div>` : '';
   const extra = [v.reps ? `맨몸 ${v.reps}회` : '', v.km ? kmTxt(v.km) : ''].filter(Boolean).join(' · ');
-  return `<div class="cvol"><div class="row between"><span class="eb" style="font-weight:700">이 카드 볼륨</span>${extra ? `<span class="eb" style="font-weight:700">${extra}</span>` : ''}</div>
+  return `<div class="cvol"><div class="row between"><span class="eb" style="font-weight:700">이 카드 볼륨${v.fixed ? ' · 직접 적음' : ''}</span><span class="row" style="gap:6px">${extra ? `<span class="eb" style="font-weight:700">${extra}</span>` : ''}${can ? `<button class="vbtn" data-action="vol-edit" data-i="${i}">수정</button>` : ''}</span></div>
     ${v.kg ? `<div class="row" style="align-items:flex-end"><span class="n" style="font-size:48px">${kgTxt(v.kg)}</span><span class="unit" style="color:var(--lime-sub)">${U().toUpperCase()}</span></div>
     ${by.length > 1 ? `<div>${by.map(([n, kg]) => `<div class="li"><span>${esc(n)}</span><span class="n" style="font-size:19px">${kgTxt(kg)}</span></div>`).join('')}</div>` : ''}` : ''}</div>`; }
 function wodResultBox(it, i) {
@@ -1104,7 +1115,7 @@ function wodResultBox(it, i) {
       <div class="row" style="gap:8px;align-items:stretch">${type === 'done' && !st ? '<div class="sub grow" style="font-weight:500;align-self:center">다 했으면 DONE, 못 채웠으면 DNF를 눌러요</div>' : `<div class="res grow"><label>${st === 'DNF' ? '적고 싶을 때만' : ''}${resInput(`data-i="${i}" data-res="v" class="${type === 'text' ? 'txt' : ''}" aria-label="결과 ${RES_TYPES[type].label}"`, it.res?.v, type)}</label></div>`}
         <div class="rst">${['DNF', 'DONE'].map(v => `<button class="${st === v ? 'on' : ''}" data-action="res-status" data-i="${i}" data-v="${st === v ? '' : v}" aria-pressed="${st === v}">${v}</button>`).join('')}</div></div>
       ${st === 'DNF' ? `<div class="res"><label>못 채운 렙 (−)<input data-i="${i}" data-res="short" inputmode="numeric" value="${esc(String(it.res?.short ?? '').replace(/^-/, ''))}" placeholder="6"></label></div>` : ''}
-      <div id="wvol-${i}">${cardVolHtml(it)}</div>
+      <div id="wvol-${i}">${cardVolHtml(it, i)}</div>
       ${it.wodId ? b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 WOD의 첫 기록이에요</div>' : ''}
     </div>`;
 }
@@ -1446,7 +1457,7 @@ function toCards(items) {
 }
 const isBlankCard = it => it.type === 'wod' && !it.wodId && !(it.name || '').trim() && !wodResult(it) && it.parts.every(p => p.fmt.id === 'none' && !pList(p).length && p.moves.every(m => !m.n.trim()));
 function pushCard(d, it) { const k = ui.swapCard; ui.swapCard = null; if (k != null && d.items[k]) { it.cat ||= d.items[k].cat; d.items[k] = it; } else if (d.items.length === 1 && isBlankCard(d.items[0])) d.items = [it]; else d.items.push(it); }
-function openEditor(draft) { draft.items = toCards(draft.items); if (!draft.items.length) draft.items.push(dailyItem());
+function openEditor(draft) { ui.volEdit = null; draft.items = toCards(draft.items); if (!draft.items.length) draft.items.push(dailyItem());
   /* one name box: the card title is the record's title */
   const c0 = draft.items[0]; if (draft.title && c0.type === 'wod' && (!c0.name.trim() || c0.name === 'Daily WOD')) c0.name = draft.title; if (draft.cat && !draft.items[0].cat) draft.items[0].cat = draft.cat; ui.mvOrder = null; ui.draft = draft; ui.page = 'edit'; ui.confirm = null; closeSheet(); render(); }
 function openDay(ds) { ui.dayDate = ds; ui.page = 'day'; ui.confirm = null; closeSheet(); render(); }
@@ -1617,6 +1628,8 @@ const A = {
     closeSheet(); render(true); },
   'part-del': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi; if (it.parts.length < 2) return; const [p] = it.parts.splice(pi, 1), to = it.parts[Math.max(0, pi - 1)];
     const keep = p.moves.filter(m => m.n.trim()); if (pi === 0) to.moves.unshift(...keep); else to.moves.push(...keep); render(true); toast('구간을 없애고 운동은 앞 구간으로 합쳤어요'); },
+  'vol-edit': el => { ui.volEdit = ui.volEdit === el.dataset.i ? null : el.dataset.i; render(true); if (ui.volEdit) document.querySelector(`[data-volfix="${ui.volEdit}"]`)?.focus(); },
+  'vol-auto': el => { delete curItems()[+el.dataset.i].volFix; ui.volEdit = null; render(true); },
   'res-menu': el => { ui.resMenu = ui.resMenu === el.dataset.k ? null : el.dataset.k; render(true); },
   'res-type': el => { const it = curItems()[+el.dataset.i], v = el.dataset.v; it.resT = v; ui.resMenu = null; if (it.parts.length === 1) it.parts[0].resT = v; render(true); },
   'part-res-type': el => { ui.resMenu = null; curItems()[+el.dataset.i].parts[+el.dataset.pi].resT = el.dataset.v; render(true); },
@@ -1806,6 +1819,7 @@ document.addEventListener('input', e => {
   if (ds.tabl !== undefined) { const x = state.wodTabs.find(y => y.k === ds.tabl); if (x) { x.label = t.value.trim() || x.label; save(); const b = document.querySelector(`[data-action=wod-tab][data-v="${ds.tabl}"]`); if (b) b.textContent = x.label; } return; }
   if (ds.wn !== undefined) { curItems()[+ds.wn].name = t.value; return; }
   if (ds.pres !== undefined) { const p = curItems()[+ds.i].parts[+ds.pres]; p.res = {...(p.res || {}), v:t.value}; return; }
+  if (ds.volfix !== undefined) { const it = curItems()[+ds.volfix], x = t.value.replace(/,/g, '').trim(); if (x === '') delete it.volFix; else it.volFix = {v:x, u:U()}; return; }
   if (ds.res) { const it = curItems()[+ds.i]; it.res = {...(it.res || {}), [ds.res]:t.value}; const pv = document.querySelector(`[data-respv="${ds.i}"]`); if (pv) pv.textContent = wodResult(it) || '-'; return; }
   if (ds.tn) { ui.tdraft.note = t.value; return; }
   if (ds.fe) { ui.fe[ds.fe] = t.value; return; }
