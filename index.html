@@ -181,6 +181,9 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .chk.on{background:var(--lime);border-color:var(--lime)}
 .snsprev{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
 .snsprev img{width:70%;max-width:260px;flex-shrink:0;border-radius:12px;border:1px solid #2a2a2a}
+.calhead{display:flex;align-items:center;justify-content:space-between;gap:8px;height:76px}
+.calhead h1{line-height:1}
+.calhead .viewsw{flex-shrink:0;margin-left:auto}
 .vline{display:flex;align-items:baseline;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .vline.lime{border-top-color:rgba(0,0,0,.15)}.vline.lime .eb,.vline.lime .unit{color:var(--lime-sub)}
 .card.list .vline{padding:12px 0 10px;margin-top:0}
@@ -861,9 +864,9 @@ function viewCal() {
   }
   const sel = parseYmd(ui.sel), ev = entriesOn(ui.sel);
   return `<div class="row between"><button class="pill ghost" data-action="cat-filter" aria-label="카테고리와 목표 설정">☰ 보기 설정</button><div class="row" style="gap:6px"><button class="pill lime" data-action="sns-open">이미지로 저장</button><span class="pill">이번 주 ${wk.count} / ${state.goal}회</span></div></div>
-  <div class="row between" style="align-items:flex-end">
-    ${ui.view === 'list' ? '<h1 class="disp" style="font-size:64px">목록</h1>' : `<div class="row" style="align-items:flex-end;gap:2px"><button class="icon" data-action="month" data-v="-1" aria-label="이전">‹</button><h1 class="disp" style="font-size:${ui.view === 'week' ? 40 : 72}px;white-space:nowrap">${ui.view === 'week' ? `${sel.getMonth()+1}월 ${Math.ceil((sel.getDate() + new Date(sel.getFullYear(), sel.getMonth(), 1).getDay()) / 7)}주` : `${vm}월`}</h1><button class="icon" data-action="month" data-v="1" aria-label="다음">›</button></div>`}
-    <div class="row" style="gap:5px;padding-bottom:10px">${[['month','월'],['week','주'],['list','목록']].map(([k, l]) => `<button class="pill" aria-pressed="${ui.view === k}" data-action="view" data-v="${k}">${l}</button>`).join('')}</div>
+  <div class="calhead">
+    ${ui.view === 'list' ? '<h1 class="disp" style="font-size:56px">목록</h1>' : `<div class="row" style="align-items:center;gap:2px;min-width:0"><button class="icon" data-action="month" data-v="-1" aria-label="이전">‹</button><h1 class="disp" style="font-size:${ui.view === 'week' ? 40 : 64}px;white-space:nowrap;line-height:1">${ui.view === 'week' ? `${sel.getMonth()+1}월 ${Math.ceil((sel.getDate() + new Date(sel.getFullYear(), sel.getMonth(), 1).getDay()) / 7)}주` : `${vm}월`}</h1><button class="icon" data-action="month" data-v="1" aria-label="다음">›</button></div>`}
+    <div class="row viewsw" style="gap:5px">${[['month','월'],['week','주'],['list','목록']].map(([k, l]) => `<button class="pill" aria-pressed="${ui.view === k}" data-action="view" data-v="${k}">${l}</button>`).join('')}</div>
   </div>
   <div class="row between"><span class="sub">${vy}년 · 두 번 누르면 그날 기록, 길게 누르면 메뉴</span><button class="pill lime" data-action="go-today">오늘</button></div>
   ${body}
