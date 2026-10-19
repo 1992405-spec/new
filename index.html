@@ -478,15 +478,19 @@ const NAMED_OLD = [
   {id:'randy', name:'Randy', format:'fortime', moves:[['75회','파워스내치 34/25kg']]},
   {id:'nate', name:'Nate', format:'amrap', cap:20, moves:[['2회','머슬업'],['4회','핸드스탠드 푸시업'],['8회','케틀벨 스윙 32/24kg']]}
 ].map(w => ({...w, named:true, moves:w.moves.map(([a,n]) => ({a, n:enName(n)}))}));
-const NAMED = NAMED_OLD.map(w => tplFromOld(w));
+/* 2026-10-19: a new user starts with one named WOD and three exercises as examples, and builds the rest while logging */
+const STARTER_EX = ['sq','bp','dl'], STARTER_NAMED = ['fran'];
+const starterExercises = () => seedExercises().filter(e => STARTER_EX.includes(e.id));
+const NAMED = NAMED_OLD.filter(w => STARTER_NAMED.includes(w.id)).map(w => tplFromOld(w));
 /* built-in named WODs plus the ones the user adds (state.named, editable) */
 const ownNamed = () => state.named.filter(x => !NAMED.some(w => w.id === x.id));
 /* an edited built-in is kept in state.named under the same id and replaces the original */
+const hiddenN = () => state.hiddenNamed.filter(id => NAMED.some(w => w.id === id));
 const allNamed = () => [...NAMED.filter(w => !state.hiddenNamed.includes(w.id)).map(w => state.named.find(x => x.id === w.id) || w), ...ownNamed()];
 /* WOD tabs: "mine" and "named" are the starting tabs; both can be renamed and the user can add more (e.g. 수영 세트) */
 const DEF_WOD_TABS = [{k:'mine', label:'내 WOD'}, {k:'named', label:'네임드'}];
 const tabLabel = k => state.wodTabs.find(t => t.k === k)?.label || (k === 'named' ? '네임드' : '내 WOD');
-const tabList = k => k === 'named' ? [...ownNamed(), ...allNamed().filter(w => !w.own)] : state.mine.filter(w => (w.col || 'mine') === k);
+const tabList = k => k === 'named' ? [...ownNamed().filter(w => w.own), ...allNamed().filter(w => !w.own)] : state.mine.filter(w => (w.col || 'mine') === k);
 const seedMine = () => [
   {id:'m1', name:'월요일 파트너 WOD', format:'igyg', cap:24, rounds:10, moves:[{a:'10회',n:'Burpee'},{a:'15cal',n:'Row'}], note:'박스 수업에서 받은 WOD'},
   {id:'m2', name:'Burpee Death By', format:'deathby', moves:[{a:'매 분 +1',n:'Burpee'}]}
@@ -530,8 +534,9 @@ function seedPlans() {
 const KEY = 'setlog-v4';
 let state;
 /* a new install starts empty; the example data is only loaded on request (and for the guide pictures) */
-const freshState = () => migrate({exercises:seedExercises(), mine:[], sessions:[], plans:[], goal:4});
-const exampleState = () => { const st = migrate({exercises:seedExercises(), mine:seedMine(), sessions:seedSessions(), plans:seedPlans(), goal:4});
+const freshState = () => migrate({exV:2, exercises:starterExercises(), mine:[], sessions:[], plans:[], goal:4});
+/* the example data uses the full exercise list and keeps its other named WODs as the user's own */
+const exampleState = () => { const st = migrate({exV:2, exercises:seedExercises(), mine:seedMine(), named:NAMED_OLD.filter(w => !STARTER_NAMED.includes(w.id) && ['cindy','helen','murph'].includes(w.id)).map(w => tplFromOld(w)), sessions:seedSessions(), plans:seedPlans(), goal:4});
   const sq = st.exercises.find(e => e.id === 'sq'); if (sq) sq.rm = [{date:ymd(addDays(new Date(), -70)), v:'130', u:'kg'}, {date:ymd(addDays(new Date(), -21)), v:'140', u:'kg'}];
   return st; };
 function load() { try { const raw = localStorage.getItem(KEY); if (raw) { state = migrate(JSON.parse(raw)); return; } } catch (e) {} state = freshState(); }
@@ -569,7 +574,8 @@ function migrate(st) {
   st.cats.forEach(c => { if (c.k === 'wod' && c.label === '와드') c.label = 'WOD'; });
   for (const s of st.sessions) { if (s.title) s.title = s.title.replace(/^와드 · /, 'WOD · '); for (const it of s.items) if (it.type === 'wod' && (it.name === '오늘의 와드' || it.name === 'Workout of the Day')) it.name = 'Daily WOD'; }
   for (const s of st.sessions) s.items = s.items.map(it => it.type === 'wod' && !it.parts ? wodFromOld(it) : it);
-  for (const e of seedExercises()) if (['pc','hpc','pj','clean','psn','sqsn','ohs','dip','pistol','backext'].includes(e.id) && !st.exercises.some(x => x.id === e.id || x.name === e.name || x.name === e.ko)) st.exercises.push(e);
+  if (!st.exV) for (const e of seedExercises()) if (['pc','hpc','pj','clean','psn','sqsn','ohs','dip','pistol','backext'].includes(e.id) && !st.exercises.some(x => x.id === e.id || x.name === e.name || x.name === e.ko)) st.exercises.push(e);
+  st.exV = 2;
   const seeds = seedExercises();
   st.exercises.forEach(e => { const s0 = seeds.find(x => x.id === e.id); if (s0 && (e.name === s0.ko || e.name === s0.name)) { e.name = s0.name; e.ko = s0.ko; } });
   const toEn = m => { m.n = enName(m.n); };
@@ -1158,7 +1164,7 @@ function viewWod() {
       return `<button class="card" data-action="wod-detail" data-id="${w.id}" style="border:0;text-align:left;color:var(--ink);display:flex;flex-direction:column;gap:6px;width:100%">
         <div class="row between"><span class="n" style="font-size:38px;text-transform:uppercase">${esc(w.name)}</span><span class="row" style="gap:6px">${w.own ? '<span class="pill">직접 추가</span>' : w.edited ? '<span class="pill">수정함</span>' : ''}${w.parts[0]?.fmt.label ? `<span class="pill lime">${esc(w.parts[0].fmt.label.toUpperCase())}</span>` : ''}</span></div>
         <div class="sub">${esc(tplSummary(w))}</div>
-        ${b ? `<div class="row" style="gap:8px"><span class="eb">내 최고</span><span class="n" style="font-size:24px;color:var(--lime)">${esc(b.txt)}</span></div>` : ''}</button>`; }).join('') || '<div class="empty">저장한 WOD가 없어요.</div>') + (t === 'named' && state.hiddenNamed.length ? `<button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="named-unhide">지운 기본 네임드 ${state.hiddenNamed.length}개 되돌리기</button>` : ''); }
+        ${b ? `<div class="row" style="gap:8px"><span class="eb">내 최고</span><span class="n" style="font-size:24px;color:var(--lime)">${esc(b.txt)}</span></div>` : ''}</button>`; }).join('') || '<div class="empty">저장한 WOD가 없어요.</div>') + (t === 'named' && hiddenN().length ? `<button class="btn out small" style="border-color:#333;color:var(--mut)" data-action="named-unhide">지운 기본 네임드 ${hiddenN().length}개 되돌리기</button>` : ''); }
   return `<div class="row between"><span class="eb">WOD</span><span class="pill">${allNamed().length + state.mine.length}개</span></div>
   <h1 class="disp" style="font-size:64px">WOD</h1>
   <button class="hero" data-action="record-daily" style="border:0;text-align:left;width:100%"><span class="disp" style="font-size:26px;display:block">Daily WOD 바로 기록</span><span class="sub" style="display:block;margin-top:4px">구성 고르고, 운동 고르고, 결과만 적어요</span></button>
@@ -1717,7 +1723,7 @@ const A = {
   },
   'del-ex': () => { if (ui.confirm !== 'del-ex') { ui.confirm = 'del-ex'; return refreshSheet(); } state.exercises = state.exercises.filter(e => e.id !== ui.exd.id); save(); ui.confirm = null; closeSheet(); render(true); toast('운동을 삭제했어요'); },
   // stats
-  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exercises:seedExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, weekVol:state.weekVol, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, exCats:state.exCats, formats:state.formats, patterns:state.patterns, theme:state.theme}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
+  wipe: () => { if (ui.confirm !== 'wipe') { ui.confirm = 'wipe'; return render(true); } state = migrate({exV:2, exercises:starterExercises(), mine:[], named:[], sessions:[], plans:[], goal:state.goal, weekVol:state.weekVol, unit:state.unit, wodTabs:state.wodTabs, cats:state.cats, exCats:state.exCats, formats:state.formats, patterns:state.patterns, theme:state.theme}); ui.confirm = null; save(); ui.tab = 'cal'; render(); toast('모든 기록을 지웠어요'); },
   export: () => {
     const blob = new Blob([JSON.stringify({app:'setlog', v:1, saved:new Date().toISOString(), state}, null, 1)], {type:'application/json'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `setlog-backup-${TODAY()}.json`; document.body.appendChild(a); a.click(); a.remove();
