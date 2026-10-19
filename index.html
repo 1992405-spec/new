@@ -402,7 +402,9 @@ const DEF_PATTERNS = [
 ];
 const patShape = t => t.tpl === 'N' ? t.label : t.tpl.replace('N', '□');
 const patLabel = p => !p ? '' : p.tpl ? (p.v ? p.tpl.replace('N', p.v) : patShape(p)) : p.kind === 'scheme' ? p.v : p.kind === 'rounds' ? `${p.v} 라운드` : `${p.v}분`;
-const schemeOf = p => p && (p.fill || p.kind === 'scheme') ? p.v || '' : '';
+/* a number like 21-15-9 is a rep scheme and fills the exercise rows below it; a single number (5 라운드) does not */
+const SCHEME_RE = /^\s*\d+(\s*-\s*\d+)+\s*$/;
+const schemeOf = p => p && (p.fill || p.kind === 'scheme' || SCHEME_RE.test(p.v || '')) ? p.v || '' : '';
 const patFrom = (t, v) => t ? {t:t.id, label:t.label, tpl:t.tpl || t.label, fill:!!t.fill, ...(t.res ? {res:t.res} : {}), v:v || ''} : null;
 /* 방식 chips: formats and number chips ("N 라운드") are one list to the user; any number of them can be picked */
 const chipById = id => state.formats.find(x => x.id === id) || state.patterns.find(x => x.id === id);
@@ -995,7 +997,6 @@ function pageEdit() {
   </div>
   ${plan ? `<div class="row wrap" style="gap:8px"><span class="pill lime">${esc(repeatText(plan))} · ${esc(plan.title)} 불러옴</span><span class="sub" style="font-size:12px">지난 무게를 미리 채웠어요</span></div>` : ''}
   <datalist id="exNames">${state.exercises.map(e => `<option value="${esc(e.name)}">`).join('')}</datalist>
-  <input class="inp big" id="dTitle" data-d="title" value="${esc(d.title)}" placeholder="오늘 운동 제목 (예: 하체 데이)" aria-label="운동 제목">
   <div><div class="eb" style="margin-bottom:8px">오늘 컨디션</div><div class="chips">${MOODS.map(([e, l]) => `<button class="chip" aria-pressed="${d.mood === e}" data-action="mood" data-v="${e}">${e} ${l}</button>`).join('')}</div></div>
   ${d.items.map((it, i) => it.type === 'wod' ? wodCard(it, i) : exEditCard(it, i)).join('') || '<div class="card empty">아래에서 카드를 추가해 주세요.</div>'}
   ${ui.grouping ? `<div class="groupbar"><span class="sub" style="color:var(--ink)">${ui.groupSel.length}개 선택</span><span class="grow"></span><button class="pill" data-action="group-cancel">취소</button><button class="btn lime small" style="width:auto;padding:10px 18px" data-action="group-do">WOD로 묶기</button></div>`
@@ -1389,7 +1390,6 @@ function sheetFrEdit() {
   openSheet(`<div class="row between"><h2 class="disp" style="font-size:28px">방식 ${d.id ? '수정' : '추가'}</h2><button class="pill solid" data-action="fe-save">저장</button></div>
     <label class="field"><span class="lbl">칩 이름 (그때그때 숫자를 적을 자리는 n)</span><input class="inp" id="feName" data-fe="name" value="${esc(d.name)}" placeholder="예: Chipper, n 라운드, Team of n"></label>
     <div class="sub" style="font-size:13px" id="feHint">${n ? `기록할 때 n 자리에 숫자 칸이 떠요. 예: ${esc(d.name.replace(N_RE, '$13'))}` : 'n을 넣으면 기록할 때 숫자를 적는 칸이 떠요.'}</div>
-    ${n ? `<div class="field"><span class="lbl">숫자를 운동 줄 횟수에도 채울까요?</span><div class="opt">${[[false, '아니요 (5 라운드처럼)'], [true, '네 (21-15-9처럼)']].map(([v, l]) => `<button class="${!!d.fill === v ? 'on' : ''}" data-action="fe-fill" data-v="${v ? 1 : ''}">${l}</button>`).join('')}</div></div>` : ''}
     <label class="field"><span class="lbl">메모 (선택)</span><input class="inp" id="feNote" data-fe="note" value="${esc(d.note || '')}" placeholder="이 방식 설명"></label>
     ${d.id ? `<button class="btn danger small" data-action="fe-del">${ui.confirm === 'fe-del' ? '한 번 더 누르면 삭제' : '삭제'}</button>` : ''}`);
 }
@@ -1446,7 +1446,9 @@ function toCards(items) {
 }
 const isBlankCard = it => it.type === 'wod' && !it.wodId && !(it.name || '').trim() && !wodResult(it) && it.parts.every(p => p.fmt.id === 'none' && !pList(p).length && p.moves.every(m => !m.n.trim()));
 function pushCard(d, it) { const k = ui.swapCard; ui.swapCard = null; if (k != null && d.items[k]) { it.cat ||= d.items[k].cat; d.items[k] = it; } else if (d.items.length === 1 && isBlankCard(d.items[0])) d.items = [it]; else d.items.push(it); }
-function openEditor(draft) { draft.items = toCards(draft.items); if (!draft.items.length) draft.items.push(dailyItem()); if (draft.cat && !draft.items[0].cat) draft.items[0].cat = draft.cat; ui.mvOrder = null; ui.draft = draft; ui.page = 'edit'; ui.confirm = null; closeSheet(); render(); }
+function openEditor(draft) { draft.items = toCards(draft.items); if (!draft.items.length) draft.items.push(dailyItem());
+  /* one name box: the card title is the record's title */
+  const c0 = draft.items[0]; if (draft.title && c0.type === 'wod' && (!c0.name.trim() || c0.name === 'Daily WOD')) c0.name = draft.title; if (draft.cat && !draft.items[0].cat) draft.items[0].cat = draft.cat; ui.mvOrder = null; ui.draft = draft; ui.page = 'edit'; ui.confirm = null; closeSheet(); render(); }
 function openDay(ds) { ui.dayDate = ds; ui.page = 'day'; ui.confirm = null; closeSheet(); render(); }
 function openPlan(p) { ui.pdraft = p; ui.page = 'plan'; ui.confirm = null; closeSheet(); render(); }
 const recordDate = () => ui.sel > TODAY() ? TODAY() : ui.sel;
@@ -1522,6 +1524,7 @@ const A = {
     const d = ui.draft;
     let added = 0;
     d.cat = d.items.find(it => it.type === 'wod' && it.cat)?.cat || d.cat || ''; if (!d.cat && d.items[0]?.type === 'wod') d.cat = cardCat(d.items[0]);
+    const nm = d.items[0]?.type === 'wod' ? d.items[0].name.trim() : ''; d.title = nm && nm !== 'Daily WOD' ? nm : '';
     d.items = d.items.flatMap(it => setsOnlyCard(it) ? cardToEx(it, () => added++) : [it]);
     d.items = d.items.map(it => it.type === 'wod' ? cleanWod(it, () => added++) : it).filter(Boolean);
     d.items = d.items.map(it => it.type === 'ex' ? {...it, sets:it.sets.filter(s => it.fields.some(k => s[k] !== undefined && s[k] !== ''))} : it).filter(it => it.type === 'wod' || it.sets.length);
@@ -1702,7 +1705,6 @@ const A = {
     ui.fe = {id:x?.id || null, name:!x ? '' : x.tpl === 'N' ? x.label : x.tpl ? x.tpl.replace('N', 'n') : x.label, res:x?.res || '', note:x?.note || '', fill:!!x?.fill, ph:x?.ph || ''}; sheetFrEdit(); },
   'fr-copy': el => { A['fr-edit'](el); ui.fe.id = null; if (ui.fe.name) ui.fe.name += ' 2'; sheetFrEdit(); },
   'fe-res': el => { ui.fe.res = el.dataset.v; refreshSheet(); },
-  'fe-fill': el => { ui.fe.fill = !!el.dataset.v; refreshSheet(); },
   'fe-save': () => { const d = ui.fe, name = (d.name || '').trim(); if (!name) { toast('이름을 적어 주세요'); return; }
     const old = d.id && chipById(d.id), id = d.id || 'f' + uid(); let x;
     if (old && old.tpl === 'N' && name === old.label) x = {...old, ...(d.res ? {res:d.res} : {}), note:(d.note || '').trim(), fill:!!d.fill};
