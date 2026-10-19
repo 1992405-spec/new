@@ -83,11 +83,13 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .cal.wvol .dow,.cal.wvol .wk{grid-template-columns:repeat(7,minmax(0,1fr)) 34px}
 .wk .wv{align-self:center;text-align:right;font-family:var(--num);font-weight:700;font-size:12.5px;color:var(--ink);white-space:nowrap}
 .dow .wv{text-align:right;font-size:10px}
-.dc{height:56px;min-width:0;border-radius:10px;background:#141414;border:0;padding:5px 4px;display:flex;flex-direction:column;gap:3px;position:relative;text-align:left;-webkit-touch-callout:none}
+.dc{height:62px;min-width:0;border-radius:10px;background:#141414;border:0;padding:5px 4px;display:flex;flex-direction:column;gap:3px;position:relative;text-align:left;-webkit-touch-callout:none}
 .dc .d{font-family:var(--num);font-weight:700;font-size:15px;color:#cfcfcf;line-height:1}
 .dc.sun .d{color:var(--red)}
 .dc.out{background:none}.dc.out .d{color:#3a3a3a}
-.dc .b{height:6px;border-radius:3px;display:block}
+.dc .bs{display:flex;flex-direction:column;gap:2px}
+.dc .b{height:5px;border-radius:3px;display:block}
+.dc .more{font-family:var(--num);font-weight:700;font-size:10px;line-height:1;color:var(--mut)}
 .dc .b.plan{background:none!important;border:1.5px dashed}
 .dc.today{box-shadow:inset 0 0 0 2px var(--lime)}
 .dc.today .d{color:var(--lime)}
@@ -735,7 +737,7 @@ function viewCal() {
       for (let c = 0; c < 7; c++) { const d = addDays(start, r*7 + c), ds = ymd(d), ev = entriesOn(ds), mood = sessionsOn(ds)[0]?.mood;
         h += `<button class="dc ${d.getMonth() !== vm - 1 ? 'out' : ''} ${c === 0 ? 'sun' : ''} ${ds === t ? 'today' : ''} ${ds === ui.sel ? 'sel' : ''}" data-date="${ds}" aria-label="${dayLabel(ds)} ${ev.length ? ev.map(e => e.title).join(', ') : '기록 없음'}">
           <span class="d">${d.getDate()}</span>${mood ? `<span class="s">${mood}</span>` : ''}
-          ${ev.slice(0, 2).map(e => `<span class="b ${e.kind === 'p' ? 'plan' : ''}" style="${e.kind === 'p' ? 'border-color' : 'background'}:${catOf(e.cat).color}"></span>`).join('')}</button>`; }
+          ${ev.length ? `<span class="bs">${ev.slice(0, ev.length > 4 ? 3 : 4).map(e => `<span class="b ${e.kind === 'p' ? 'plan' : ''}" style="${e.kind === 'p' ? 'border-color' : 'background'}:${catOf(e.cat).color}"></span>`).join('')}${ev.length > 4 ? `<span class="more">+${ev.length - 3}</span>` : ''}</span>` : ''}</button>`; }
       if (wv) { const v = volBetween(ymd(addDays(start, r*7)), ymd(addDays(start, r*7 + 6))); h += `<span class="wv">${v.kg ? kgShort(v.kg) : v.km ? kmTxt(v.km) : ''}</span>`; }
       h += '</div>'; }
     body = `<div class="cal ${wv ? 'wvol' : ''}" id="cal"><div class="dow">${WD.map(w => `<span>${w}</span>`).join('')}${wv ? '<span class="wv">볼륨</span>' : ''}</div>${h}</div>`;
