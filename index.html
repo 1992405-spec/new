@@ -400,8 +400,13 @@ const DEF_PATTERNS = [
   {id:'scheme', label:'횟수 패턴', tpl:'N', fill:true, ph:'21-15-9'},
   {id:'rounds', label:'라운드', tpl:'N 라운드', ph:'5'},
   {id:'time', label:'시간', tpl:'N분', ph:'20'},
-  {id:'team', label:'Team of', tpl:'Team of N', ph:'2'}
+  {id:'team', label:'Team of', tpl:'Team of N', ph:'2'},
+  {id:'pace', label:'평균 페이스', tpl:'평균 페이스 N/km', ph:'5\'30"', pace:true}
 ];
+/* pace: type 530 and it becomes 5'30" (min'sec") */
+const isPace = t => !!t && (t.pace || /페이스|pace/i.test(t.tpl || t.label || ''));
+const paceFmt = v => { v = String(v || '').trim(); const d = v.replace(/\D/g, ''); if (!d) return ''; if (/^\d+'\d{2}"?$/.test(v)) return v.replace(/"?$/, '"');
+  if (d.length <= 2) return `${+d}'00"`; return `${+d.slice(0, -2)}'${d.slice(-2)}"`; };
 const patShape = t => t.tpl === 'N' ? t.label : t.tpl.replace('N', '□');
 const patLabel = p => !p ? '' : p.tpl ? (p.v ? p.tpl.replace('N', p.v) : patShape(p)) : p.kind === 'scheme' ? p.v : p.kind === 'rounds' ? `${p.v} 라운드` : `${p.v}분`;
 /* a number like 21-15-9 is a rep scheme and fills the exercise rows below it; a single number (5 라운드) does not */
@@ -571,6 +576,8 @@ function migrate(st) {
   if (!st.exCats.some(c => c.k === 'etc')) st.exCats.push({...DEF_EX_CATS[DEF_EX_CATS.length - 1]});
   st.formats ||= DEF_FORMATS.map(f => ({...f}));
   /* 2026-10-18: set-by-set logging became the 세트 chip */
+  /* 2026-10-19: 평균 페이스 chip */
+  if (!st.paceChip) { st.paceChip = 1; if (st.patterns && !st.patterns.some(t => t.id === 'pace')) st.patterns.push({...DEF_PATTERNS.find(t => t.id === 'pace')}); }
   if (!st.setsChip) { st.setsChip = 1; if (!st.formats.some(f => f.id === 'sets')) st.formats.unshift({...DEF_FORMATS[0]}); }
   if (!st.patterns || st.patterns.some(t => !t.tpl)) st.patterns = DEF_PATTERNS.map(p => ({...p}));
   const toPats = p => { if (!p.pats) p.pats = p.pat ? [oldPat(p.pat)] : []; delete p.pat; };
@@ -1049,7 +1056,7 @@ function toggleChip(fmt, pats, id) {
 /* the number goes where N sits in the chip, e.g. "Team of [3]" */
 function patInput(t, v, attrs) {
   const [pre, post] = t.tpl.split('N');
-  return `<label class="patv">${pre ? `<span>${esc(pre.trim())}</span>` : ''}<input ${attrs} value="${esc(v || '')}" placeholder="${esc(t.ph || '')}" inputmode="${t.fill ? 'text' : 'numeric'}" aria-label="${esc(t.label)} 숫자">${post ? `<span>${esc(post.trim())}</span>` : ''}</label>`;
+  return `<label class="patv">${pre ? `<span>${esc(pre.trim())}</span>` : ''}<input ${attrs} value="${esc(v || '')}" placeholder="${esc(t.ph || '')}" inputmode="${t.fill ? 'text' : 'numeric'}"${isPace(t) ? ' data-pace="1"' : ''} aria-label="${esc(t.label)} 숫자">${post ? `<span>${esc(post.trim())}</span>` : ''}</label>`;
 }
 /* numbers used before with this kind, newest first, one tap to reuse */
 function recentPat(t, attrs) {
@@ -1837,6 +1844,8 @@ document.addEventListener('change', e => {
     state = migrate({mine:[], goal:4, ...s}); save(); applyTheme(); render(); toast(`기록 ${state.sessions.length}개를 불러왔어요`);
   }).catch(() => toast('이 파일은 불러올 수 없어요'));
 });
+document.addEventListener('change', e => { const ds = e.target.dataset; if (ds.pace === undefined || ds.patv === undefined) return;
+  const v = paceFmt(e.target.value); e.target.value = v; pList(curItems()[+ds.i].parts[+ds.patv])[+ds.pk].v = v; updateSum(ds.i); });
 document.addEventListener('change', e => { const k = e.target.dataset.catf; if (k) { ui.hidden = e.target.checked ? ui.hidden.filter(x => x !== k) : [...new Set([...ui.hidden, k])]; render(true); } });
 /* weight changed from a loaded WOD's Rx weight → mark Scaled */
 document.addEventListener('change', e => { const ds = e.target.dataset; if (ds.mv === undefined || ds.k !== 'w') return;
