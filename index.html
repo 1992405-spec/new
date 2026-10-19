@@ -270,6 +270,16 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .note{font-size:12px;color:var(--lime);text-align:center}
 .secres{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#262f0a;border-radius:10px;padding:6px 8px 6px 12px;font-size:13px;color:var(--lime);font-weight:700}
 .secres input{background:#000;border:1px solid #3d4a12;border-radius:8px;padding:5px 8px;width:110px;font-family:var(--num);font-weight:800;font-size:20px;color:var(--lime);text-align:right}
+/* result format: one "시간 ▾" button opens the list (DONE covers what "완료만" did) */
+.rsel{background:var(--lime-ink);color:var(--lime);border:0;border-radius:99px;padding:7px 14px;font-weight:700;font-size:13px;white-space:nowrap}
+.rsel.dk{background:none;color:var(--lime);border:1px solid var(--lime);padding:4px 10px;font-size:12px}
+.rmenu{background:var(--lime-ink);border-radius:14px;padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.rmenu button{display:flex;justify-content:space-between;align-items:center;gap:6px;background:none;border:0;border-radius:9px;padding:9px 10px;color:var(--ink);font-size:13px;font-weight:700;text-align:left}
+.rmenu button small{color:var(--mut);font-weight:500;font-size:11.5px}
+.rmenu button.on{background:#262626;color:var(--lime)}
+.rst{display:flex;flex-direction:column;gap:6px;justify-content:center}
+.rst button{border:1.5px solid var(--lime-ink);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:800;background:none;color:var(--lime-ink)}
+.rst button.on{background:var(--lime-ink);color:var(--lime)}
 .mini-p{font-size:12px;font-weight:700;border-radius:99px;padding:4px 10px;border:1px solid var(--lime);color:var(--lime);background:none}
 .mini-p.on{background:var(--lime);color:#000}
 .groupbar{position:sticky;bottom:12px;display:flex;gap:8px;align-items:center;background:#1F1F1F;border:1px solid #333;border-radius:18px;padding:10px 12px;z-index:5}
@@ -1039,6 +1049,8 @@ function recentPat(t, attrs) {
   const vs = [...new Set(state.sessions.slice().sort((a, b) => b.date.localeCompare(a.date)).flatMap(s => s.items).filter(x => x.type === 'wod').flatMap(x => x.parts).flatMap(pList).filter(x => x.t === t.id && x.v).map(x => x.v))].slice(0, 4);
   return vs.length ? `<div class="chips2"><span class="lbl" style="align-self:center">최근</span>${vs.map(v => `<button class="c2 sm" ${attrs} data-v="${esc(v)}">${esc(t.tpl.replace('N', v))}</button>`).join('')}</div>` : '';
 }
+const RES_MENU = Object.keys(RES_TYPES).filter(k => k !== 'done');
+const resMenu = (cur, attrs) => `<div class="rmenu">${RES_MENU.map(k => `<button class="${cur === k ? 'on' : ''}" ${attrs} data-v="${k}">${RES_TYPES[k].label}<small>${RES_TYPES[k].ex}</small></button>`).join('')}</div>`;
 function resInput(attrs, v, type) {
   const R = RES_TYPES[type] || RES_TYPES.text;
   return `<input ${attrs} inputmode="${R.mode}" value="${esc(v || '')}" placeholder="${R.ph || '결과'}">`;
@@ -1060,7 +1072,7 @@ function partHtml(it, i, p, pi) {
   const fl = ord ? flatOf(p) : [], fn = fl.length;
   const rows = ord ? fl.map((e, f) => e.l ? `<div class="mvo"><span class="t" style="color:var(--lime)">${esc(lineName(p, e.l))}</span><button class="icon" data-action="ln-move" data-i="${i}" data-pi="${pi}" data-f="${f}" data-d="-1" ${f === 0 ? 'disabled' : ''} aria-label="구성 위로">↑</button><button class="icon" data-action="ln-move" data-i="${i}" data-pi="${pi}" data-f="${f}" data-d="1" ${f === fn - 1 ? 'disabled' : ''} aria-label="구성 아래로">↓</button></div>` : ((m, j) => `<div class="mvo"><span class="q">${esc(qTxt(m.q) || schemeAt(p, j) || '')}</span><span class="t">${esc(m.n || '(빈 칸)')}</span>${m.w ? `<span class="w">${esc(m.w)}</span>` : ''}<button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="-1" ${first && f === 0 ? 'disabled' : ''} aria-label="${j+1}번 위로">↑</button><button class="icon" data-action="mv-move" data-i="${i}" data-pi="${pi}" data-j="${j}" data-d="1" ${last && f === fn - 1 ? 'disabled' : ''} aria-label="${j+1}번 아래로">↓</button></div>`)(p.moves[e.j], e.j)).join('')
     : p.moves.map((m, j) => linesAt(j) + (j || sm ? '' : '<div class="mv hd"><div>횟수</div><div>운동</div><div>무게</div><div></div></div>') + row(m, j)).join('') + linesAt(n);
-  const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${partRes(p) === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, partRes(p))}</div><div class="row" style="gap:4px;flex-wrap:wrap">${Object.keys(RES_TYPES).map(k => `<button class="mini-p ${partRes(p) === k ? 'on' : ''}" data-action="part-res-type" data-i="${i}" data-pi="${pi}" data-v="${k}">${RES_TYPES[k].label}</button>`).join('')}</div>` : '';
+  const pres = multi ? `<div class="secres"><span>${String.fromCharCode(65 + pi)} 결과</span>${partRes(p) === 'done' ? `<button class="mini-p ${p.res?.status === 'DONE' ? 'on' : ''}" data-action="part-done" data-i="${i}" data-pi="${pi}">DONE</button>` : resInput(`data-pres="${pi}" data-i="${i}" aria-label="${String.fromCharCode(65 + pi)} 결과"`, p.res?.v, partRes(p))}<button class="rsel dk" data-action="res-menu" data-k="${i}-${pi}" aria-label="${String.fromCharCode(65 + pi)} 결과 형식">${RES_TYPES[partRes(p)].label} ▾</button></div>${ui.resMenu === `${i}-${pi}` ? resMenu(partRes(p), `data-action="part-res-type" data-i="${i}" data-pi="${pi}"`) : ''}` : '';
   const bar = ord ? (last ? `<button class="addex" style="color:#000;background:var(--lime);border-color:var(--lime);text-align:center;font-weight:700" data-action="mv-order" data-i="${i}">순서 바꾸기 완료</button>` : '') : `<div class="row" style="gap:6px"><button class="addex grow" data-action="mv-find" data-i="${i}" data-pi="${pi}">+ 운동</button>${last && (wodMoves(it).length > 1 || it.parts.some(q => cfgLines(q).length)) ? `<button class="addex" data-action="mv-order" data-i="${i}">순서</button>` : ''}<button class="addex" style="color:var(--lime);border-color:var(--lime)" data-action="chip-add" data-i="${i}" data-pi="${pi}">+ 구성</button><button class="addex" data-action="frame-insert" data-i="${i}" data-pi="${pi}" data-j="${n}">+ 구간</button></div>`;
   return `<div class="part">${head}${bar}${rows}
     ${pres}</div>`;
@@ -1086,12 +1098,12 @@ function wodResultBox(it, i) {
   return `<div class="hero" style="display:flex;flex-direction:column;gap:10px">
       <div class="row between"><span class="eb" style="font-weight:700">${it.parts.length > 1 ? '전체 결과' : '결과'}</span><div class="row" style="gap:4px">${['Rx','Scaled'].map(v => `<button class="pill" style="${it.scale === v ? on : off}" data-action="scale" data-i="${i}" data-v="${v}">${v}</button>`).join('')}</div></div>
       <div class="wsum" id="wsum-${i}">${wodSum(it)}</div>
-      <div><div class="sub" style="font-weight:700;margin-bottom:6px">결과 형식</div><div class="row" style="gap:4px;flex-wrap:wrap">${Object.keys(RES_TYPES).map(k => `<button class="pill" style="${type === k ? on : off}" data-action="res-type" data-i="${i}" data-v="${k}">${RES_TYPES[k].label}</button>`).join('')}</div></div>
-      <div class="row" style="gap:6px">${[['', '기록'], ['DNF', 'DNF'], ['DONE', 'DONE']].map(([v, l]) => `<button class="pill" style="${st === v ? on : off}" data-action="res-status" data-i="${i}" data-v="${v}">${l}</button>`).join('')}</div>
+      <div class="row between"><span class="eb" style="font-weight:700">형식</span><button class="rsel" data-action="res-menu" data-k="${i}">${RES_TYPES[type].label} ▾</button></div>
+      ${ui.resMenu === String(i) ? resMenu(type, `data-action="res-type" data-i="${i}"`) : ''}
+      <div class="row" style="gap:8px;align-items:stretch">${type === 'done' && !st ? '<div class="sub grow" style="font-weight:500;align-self:center">다 했으면 DONE, 못 채웠으면 DNF를 눌러요</div>' : `<div class="res grow"><label>${st === 'DNF' ? '적고 싶을 때만' : ''}${resInput(`data-i="${i}" data-res="v" class="${type === 'text' ? 'txt' : ''}" aria-label="결과 ${RES_TYPES[type].label}"`, it.res?.v, type)}</label></div>`}
+        <div class="rst">${['DNF', 'DONE'].map(v => `<button class="${st === v ? 'on' : ''}" data-action="res-status" data-i="${i}" data-v="${st === v ? '' : v}" aria-pressed="${st === v}">${v}</button>`).join('')}</div></div>
       ${st === 'DNF' ? `<div class="res"><label>못 채운 렙 (−)<input data-i="${i}" data-res="short" inputmode="numeric" value="${esc(String(it.res?.short ?? '').replace(/^-/, ''))}" placeholder="6"></label></div>` : ''}
-      ${type === 'done' && !st ? '<div class="sub" style="font-weight:500">다 했으면 DONE, 못 채웠으면 DNF를 눌러요</div>' : `<div class="res"><label>${st === 'DNF' ? '적고 싶을 때만' : RES_TYPES[type].label}${resInput(`data-i="${i}" data-res="v" class="${type === 'text' ? 'txt' : ''}"`, it.res?.v, type)}</label></div>`}
       <div id="wvol-${i}">${cardVolHtml(it)}</div>
-      <div class="sub" style="font-weight:500">결과: <b data-respv="${i}">${esc(wodResult(it) || '-')}</b></div>
       ${it.wodId ? b ? `<div class="sub" style="font-weight:500">내 최고 ${esc(b.txt)} (${md(b.date)})</div>` : '<div class="sub">이 WOD의 첫 기록이에요</div>' : ''}
     </div>`;
 }
@@ -1602,8 +1614,9 @@ const A = {
     closeSheet(); render(true); },
   'part-del': el => { const it = curItems()[+el.dataset.i], pi = +el.dataset.pi; if (it.parts.length < 2) return; const [p] = it.parts.splice(pi, 1), to = it.parts[Math.max(0, pi - 1)];
     const keep = p.moves.filter(m => m.n.trim()); if (pi === 0) to.moves.unshift(...keep); else to.moves.push(...keep); render(true); toast('구간을 없애고 운동은 앞 구간으로 합쳤어요'); },
-  'res-type': el => { const it = curItems()[+el.dataset.i], v = el.dataset.v; it.resT = v; if (it.parts.length === 1) it.parts[0].resT = v; render(true); },
-  'part-res-type': el => { curItems()[+el.dataset.i].parts[+el.dataset.pi].resT = el.dataset.v; render(true); },
+  'res-menu': el => { ui.resMenu = ui.resMenu === el.dataset.k ? null : el.dataset.k; render(true); },
+  'res-type': el => { const it = curItems()[+el.dataset.i], v = el.dataset.v; it.resT = v; ui.resMenu = null; if (it.parts.length === 1) it.parts[0].resT = v; render(true); },
+  'part-res-type': el => { ui.resMenu = null; curItems()[+el.dataset.i].parts[+el.dataset.pi].resT = el.dataset.v; render(true); },
   'part-done': el => { const p = curItems()[+el.dataset.i].parts[+el.dataset.pi]; p.res = {...p.res, status:p.res?.status === 'DONE' ? '' : 'DONE'}; render(true); },
   'res-status': el => { const it = curItems()[+el.dataset.i]; it.res = {...(it.res || {}), status:el.dataset.v}; if (!el.dataset.v) delete it.res.short; render(true); },
   'dw-save': el => { const it = ui.draft.items[+el.dataset.i], t = tplFromItem(it);
