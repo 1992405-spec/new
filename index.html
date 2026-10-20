@@ -282,6 +282,10 @@ textarea.inp{resize:vertical;min-height:70px;line-height:1.6}
 .rst{display:flex;flex-direction:column;gap:6px;justify-content:center}
 .rst button{border:1.5px solid var(--lime-ink);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:800;background:none;color:var(--lime-ink)}
 .rst button.on{background:var(--lime-ink);color:var(--lime)}
+.pmv{display:grid;grid-template-columns:78px minmax(0,1fr) 80px;gap:6px;align-items:stretch}
+.pmv span{background:#000;border:1px solid #2a2a2a;border-radius:10px;padding:8px 9px;font-weight:700;font-size:14px;min-width:0;overflow-wrap:anywhere}
+.pmv .n{font-family:var(--num);font-size:17px;white-space:nowrap}
+.pmv .new{border-color:var(--orange)}.pmv small{display:block;font-size:11px;color:var(--orange)}
 .mini-p{font-size:12px;font-weight:700;border-radius:99px;padding:4px 10px;border:1px solid var(--lime);color:var(--lime);background:none}
 .mini-p.on{background:var(--lime);color:#000}
 .groupbar{position:sticky;bottom:12px;display:flex;gap:8px;align-items:center;background:#1F1F1F;border:1px solid #333;border-radius:18px;padding:10px 12px;z-index:5}
@@ -1033,7 +1037,136 @@ function exEditCard(it, i) {
 }
 /* put an exercise into the first empty row of a group, or a new row; in a 세트 group the last sets come along */
 function putMove(p, ex) { let m = p.moves.find(x => !x.n.trim()); if (!m) p.moves.push(m = blankMove()); m.n = ex.name; m.exId = ex.id; if (isSetPart(p)) fillMoveSets(m, ui.draft?.date); return m; }
-const findEx = name => state.exercises.find(e => exIs(e, name));
+/* ---------- WOD text paste (rules tested on their own first: /mnt/project-files/app/wodparse) ---------- */
+/* WOD text → card: 구성 chips (formats + number chips), exercise rows (qty, name, weight), and lines it could not read.
+   Rules only, runs on the phone. parseWod(text, exercises) → {fmts, pats, moves, notes, lines} */
+(function (root) {
+  /* exercise names people write, mapped to the app's English names; the user's own list is matched too */
+  const ALIAS = {
+    'Thruster':['thrusters','thruster','스러스터'], 'Pull-up':['pull-ups','pull ups','pullups','pull-up','pull up','pullup','풀업','턱걸이'],
+    'Chest-to-Bar Pull-up':['chest to bar pull-ups','chest-to-bar pull-ups','chest to bar','chest-to-bar','c2b pull-ups','c2b','ctb'],
+    'Push-up':['push-ups','push ups','pushups','push-up','push up','pushup','푸시업','푸쉬업'], 'Hand Release Push-up':['hand release push-ups','hand release push-up','hrpu'],
+    'Air Squat':['air squats','air squat','air sq','squats','squat','에어스쿼트','에어 스쿼트'], 'Sit-up':['sit-ups','sit ups','situps','sit-up','sit up','abmat sit-ups','abmat sit-up','싯업','윗몸일으키기'],
+    'Burpee':['burpees','burpee','버피'], 'Bar-facing Burpee':['bar facing burpees','bar-facing burpees','bar facing burpee','bfb'], 'Burpee Box Jump Over':['burpee box jump overs','burpee box jump over','bbjo'],
+    'Double Under':['double unders','double-unders','double under','double-under','dus','du','더블언더'], 'Single Under':['single unders','single-unders','single under','singles','su'],
+    'Handstand Push-up':['handstand push-ups','handstand push-up','hspu','핸드스탠드 푸시업','물구나무 푸시업'], 'Handstand Walk':['handstand walk','hs walk','hsw'],
+    'Toes-to-Bar':['toes to bar','toes-to-bar','t2b','ttb','토투바'], 'Knees-to-Elbow':['knees to elbows','knees-to-elbows','k2e'],
+    'Muscle-up':['ring muscle-ups','ring muscle ups','ring muscle-up','muscle-ups','muscle ups','muscle-up','muscle up','rmu','머슬업'], 'Bar Muscle-up':['bar muscle-ups','bar muscle ups','bar muscle-up','bmu','바 머슬업'],
+    'Box Jump':['box jumps','box jump','bj','박스점프','박스 점프'], 'Box Jump Over':['box jump overs','box jump over','bjo'], 'Box Step-up':['box step-ups','box step ups','step-ups','step ups'],
+    'Wall Ball':['wall ball shots','wall balls','wall ball','wallballs','wallball','wb','월볼'], 'Kettlebell Swing':['kettlebell swings','kettlebell swing','kb swings','kb swing','kbs','american kbs','케틀벨 스윙','케틀벨스윙'],
+    'Deadlift':['deadlifts','deadlift','dl','데드리프트','데드'], 'Sumo Deadlift High Pull':['sumo deadlift high pulls','sumo deadlift high pull','sdhp'],
+    'Back Squat':['back squats','back squat','bs','백스쿼트','백 스쿼트','스쿼트'], 'Front Squat':['front squats','front squat','fs','프론트스쿼트','프론트 스쿼트'],
+    'Overhead Squat':['overhead squats','overhead squat','ohs','오버헤드 스쿼트','오버헤드스쿼트'], 'Bench Press':['bench press','bench','bp','벤치프레스','벤치'],
+    'Overhead Press':['strict press','shoulder press','overhead press','ohp','밀리터리 프레스','오버헤드프레스'], 'Push Press':['push press','pp','푸시프레스'],
+    'Push Jerk':['push jerks','push jerk','pj','푸시저크'], 'Split Jerk':['split jerks','split jerk'], 'Shoulder to Overhead':['shoulder to overhead','shoulder-to-overhead','s2oh','sto'],
+    'Ground to Overhead':['ground to overhead','ground-to-overhead','g2oh'], 'Clean & Jerk':['clean and jerks','clean & jerks','clean and jerk','clean & jerk','c&j','cj','클린앤저크','클린 앤 저크'],
+    'Clean':['squat cleans','squat clean','cleans','clean','클린'], 'Power Clean':['power cleans','power clean','pc','파워클린','파워 클린'], 'Hang Power Clean':['hang power cleans','hang power clean','hpc','행 파워클린','행파워클린'],
+    'Hang Clean':['hang squat cleans','hang cleans','hang clean'], 'Snatch':['squat snatches','snatches','snatch','스내치'], 'Power Snatch':['power snatches','power snatch','psn','파워스내치','파워 스내치'],
+    'Hang Power Snatch':['hang power snatches','hang power snatch','hps'], 'Squat Snatch':['스쿼트 스내치'], 'Barbell Row':['bent over rows','barbell rows','barbell row','바벨로우','바벨 로우'],
+    'Lunge':['walking lunges','walking lunge','lunges','lunge','런지'], 'Overhead Lunge':['overhead walking lunges','overhead lunges','overhead lunge','oh lunges','oh lunge'],
+    'Dumbbell Snatch':['dumbbell snatches','dumbbell snatch','db snatches','db snatch','덤벨 스내치'], 'Dumbbell Thruster':['dumbbell thrusters','dumbbell thruster','db thrusters','db thruster'],
+    'Devil Press':['devil presses','devil press','데빌프레스'], 'Ring Row':['ring rows','ring row','링 로우'], 'Ring Dip':['ring dips','ring dip','dips','dip','링 딥스','딥스'],
+    'Rope Climb':['rope climbs','rope climb','rc','로프 클라임','로프클라임'], 'Pistol Squat':['pistol squats','pistols','pistol','피스톨 스쿼트','피스톨'],
+    'Back Extension':['back extensions','back extension','백 익스텐션'], 'GHD Sit-up':['ghd sit-ups','ghd sit-up','ghd situps','ghd'], 'Plank':['plank hold','plank','플랭크'],
+    'V-up':['v-ups','v ups','v-up'], 'Hollow Hold':['hollow rocks','hollow hold','hollow'], 'Burpee Pull-up':['burpee pull-ups','burpee pull-up'],
+    'Run':['running','run','러닝','달리기','런'], 'Row':['rowing','row','erg row','c2 row','로잉머신','로잉'], 'Bike':['assault bike','echo bike','air bike','bike erg','bikeerg','bike','사이클','바이크','에어바이크'],
+    'SkiErg':['ski erg','skierg','ski','스키에르그','스키'], 'Freestyle':['freestyle','swim','자유형','수영'], 'Breaststroke':['breaststroke','평영'],
+    'Farmer Carry':["farmer's carry",'farmers carry','farmer carry','파머스 캐리'], 'Sled Push':['sled push','썰매 밀기'], 'Jumping Jack':['jumping jacks','jumping jack','점핑잭'],
+    'Mountain Climber':['mountain climbers','mountain climber','마운틴 클라이머'], 'Shuttle Run':['shuttle runs','shuttle run','셔틀런'], 'Jump Rope':['jump rope','줄넘기']
+  };
+  const FMT = [ // order matters: longer first
+    ['igyg', 'I Go You Go', /\b(i\s*go\s*,?\s*you\s*go|igyg|you\s*go\s*i\s*go|ygig)\b/i],
+    ['deathby', 'Death By', /\bdeath\s*by\b/i],
+    ['tabata', 'Tabata', /\btabata\b|타바타/i],
+    ['emom', 'EMOM', /\b(e\d*mom|every\s+\d*\s*min(ute)?s?(\s+on\s+the\s+minute)?|otm)\b/i],
+    ['amrap', 'AMRAP', /\b(amrap|amraps)\b|최대한\s*많이/i],
+    ['fortime', 'For Time', /\b(for\s*time|rft|ft)\b|기록\s*단축/i],
+    ['chipper', 'Chipper', /\bchipper\b/i]
+  ];
+  const norm = s => String(s || '').toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
+  /* one key for every way of writing a name: case, hyphens, spaces and a plural s don't matter (TTB = T2B = Toes to Bar = toes-to-bars) */
+  const key = s => norm(s).replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+  const one = s => key(s).replace(/([a-z]{3})s$/, '$1'); // wall ball shots = wall ball shot
+  const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  function dictFrom(exercises) {
+    const group = {}, d = [];
+    for (const [en, al] of Object.entries(ALIAS)) for (const a of [en, ...al]) { group[key(a)] = en; group[one(a)] ||= en; }
+    /* a name already saved in 운동목록 wins: matching any spelling gives back the saved name */
+    const saved = {};
+    for (const e of exercises || []) { const g = group[key(e.name)] || group[one(e.name)] || (e.ko && (group[key(e.ko)] || group[one(e.ko)])); if (g) saved[g] = e.name; else { group[key(e.name)] = e.name; saved[e.name] = e.name; if (e.ko) group[key(e.ko)] = e.name; } }
+    for (const [k, g] of Object.entries(group)) {
+      const hangul = /[가-힣]/.test(k), body = k.split(' ').map(reEsc).join('[\\s\\-]*');
+      d.push({k, name:saved[g] || g, known:!!saved[g], re:new RegExp(hangul ? body : `(^|[\\s/@x×*(,])(${body})(?:e?s)?(?=$|[\\s/@x×*),.:;])`, 'i')});
+    }
+    return d.sort((a, b) => b.k.replace(/ /g, '').length - a.k.replace(/ /g, '').length);
+  }
+  /* find the longest known name inside the text, on word edges */
+  function findEx(txt, dict) {
+    const t = ' ' + norm(txt).replace(/[.,;:()]/g, ' ') + ' ';
+    for (const e of dict) { const m = t.match(e.re); if (!m) continue;
+      const at = m.index + (m[1] !== undefined && m.length > 2 ? m[1].length : 0) - 1;
+      return {name:e.name, known:e.known, at, len:m[0].length - (m.length > 2 ? m[1].length : 0)}; }
+    return null;
+  }
+  const WEIGHT_RE = /(@\s*)?\(?\s*(\d+(?:\.\d+)?(?:\s*\/\s*\d+(?:\.\d+)?)?)\s*(kg|kgs|lb|lbs|#|파운드|킬로)\s*\)?|\(\s*(\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?)\s*\)|@\s*(\d+(?:\.\d+)?%?)/i;
+  const QTY_RE = /^(\d+\s*[x×]\s*\d+|\d+(?:\s*-\s*\d+)+|\d+(?:\.\d+)?\s*(?:m|km|cal|cals|calories|칼로리|mi|miles?|sec|secs|s|초|min|mins|분|회|reps?|개|미터)?|max|최대|\d+:\d{2})\b\.?\s*(?:x\s+|×\s*)?/i;
+  const unitFix = q => q.replace(/\s+/g, '').replace(/^(\d+)(cals?|calories|칼로리)$/i, '$1cal').replace(/^(\d+)(reps?|회|개)$/i, '$1').replace(/^(\d+)(secs?|s|초)$/i, '$1초').replace(/^(\d+)(mins?|분)$/i, '$1분').replace(/^(\d+)미터$/, '$1m').replace(/^(\d+)[x×](\d+)$/i, '$1x$2').replace(/^(\d+(?:\.\d+)?)(mi|miles?)$/i, (_, n) => `${Math.round(n * 16.09) / 10}km`).replace(/^max$|^최대$/i, '최대');
+  function parseWod(text, exercises) {
+    const dict = dictFrom(exercises), out = {fmts:[], pats:[], moves:[], notes:[], lines:[]};
+    const addPat = (t, v) => { if (!out.pats.some(p => p.t === t && p.v === v)) out.pats.push({t, v:String(v)}); };
+    const header = line => { let hit = false, s = line, m;
+      if ((m = s.match(/(\d+)\s*(?:rounds?|rds?|rft|라운드|세트)(?![a-z])/i))) { addPat('rounds', m[1]); hit = true; s = s.replace(/(\d+)\s*(?:rounds?|rds?|라운드|세트)(?![a-z])/i, ' ').replace(/^\s*\d+\s*(?=rft)/i, ' '); }
+      for (const [id, label, re] of FMT) if (re.test(s)) { if (!out.fmts.some(f => f.id === id)) out.fmts.push({id, label}); hit = true;
+        const e = s.match(/\be(\d+)mom\b/i); if (id === 'emom' && e && +e[1] > 1) out.every = e[1];
+        s = s.replace(re, ' '); }
+      if (out.fmts.length && (m = s.match(/^\s*[x×]\s*(\d+)\s*$/i))) { addPat('rounds', m[1]); hit = true; s = ''; }
+      if ((m = s.match(/team\s*of\s*(\d+)|(\d+)\s*인\s*1?\s*팀|팀\s*(\d+)/i))) { addPat('team', m[1] || m[2] || m[3]); hit = true; s = s.replace(m[0], ' '); }
+      else if (/\b(partner|pairs?|with a partner)\b|파트너|2인/i.test(s)) { addPat('team', '2'); hit = true; }
+      if ((m = s.match(/(?:time\s*)?cap\s*:?\s*(\d+)\s*(?:min|mins|분|')?|(\d+)\s*(?:min|mins|분|')\s*(?:time\s*)?cap|타임캡\s*(\d+)/i))) { out.cap = m[1] || m[2] || m[3]; hit = true; s = s.replace(m[0], ' '); }
+      if ((m = s.match(/(\d+)\s*(?:min|mins|minutes|분|')(?!\w)/i))) { if (out.fmts.length) { addPat('time', m[1]); hit = true; s = s.replace(m[0], ' '); } }
+      else if (out.fmts.some(f => ['amrap', 'emom'].includes(f.id)) && (m = s.match(/^\s*:?\s*(\d+)\s*$/))) { addPat('time', m[1]); hit = true; s = ''; }
+      if ((m = s.match(/(?:^|\s)(\d+(?:\s*-\s*\d+){1,})(?:\s|$)/))) { addPat('scheme', m[1].replace(/\s+/g, '')); hit = true; s = s.replace(m[1], ' '); }
+      return hit && !findEx(s, dict) ? true : hit ? s : false;
+    };
+    for (let raw of String(text || '').split(/\r?\n/)) {
+      let line = raw.replace(/^\s*(?:[-–•·▪︎►>]+|\d+[.)]\s+|[a-z][.)]\s+)/i, '').trim();
+      if (!line) continue;
+      if (/^(warm[\s-]?up|cool[\s-]?down|strength|metcon|wod|skill|score|rest|오늘의\s*(와드|wod)|daily\s*wod)\b\s*:?\s*$/i.test(line) || /^오늘의\s*(와드|wod)\s*$/i.test(line)) { out.lines.push({raw, kind:'skip'}); continue; }
+      const cm = line.match(/(?:time\s*)?cap\s*:?\s*(\d+)|(\d+)\s*(?:min|mins|분|')\s*(?:time\s*)?cap|타임캡\s*(\d+)/i);
+      if (cm && !findEx(line, dict)) { out.cap = cm[1] || cm[2] || cm[3]; out.lines.push({raw, kind:'fmt'}); continue; }
+      if (/^\*|^note|^메모|^\(/i.test(line) && !findEx(line, dict)) { out.notes.push(line.replace(/^\*\s*/, '')); out.lines.push({raw, kind:'note'}); continue; }
+      const h = header(line);
+      if (h === true) { out.lines.push({raw, kind:'fmt'}); continue; }
+      if (typeof h === 'string') line = h.trim();
+      const ex = findEx(line, dict);
+      if (!ex) { if (h) { out.lines.push({raw, kind:'fmt'}); continue; } out.notes.push(line); out.lines.push({raw, kind:'note'}); continue; }
+      let rest = norm(line), w = '', q = '';
+      const wm = line.match(WEIGHT_RE);
+      if (wm) { w = wm[2] ? wm[2].replace(/\s+/g, '') + ({'#':'lb', lbs:'lb', kgs:'kg', '파운드':'lb', '킬로':'kg'}[wm[3].toLowerCase()] || wm[3].toLowerCase()) : wm[4] ? wm[4].replace(/\s+/g, '') + 'kg' : wm[5]; rest = norm(line.replace(wm[0], ' ')); }
+      const before = rest.slice(0, Math.max(0, findEx(rest, dict)?.at ?? 0)).trim(), after = rest.slice((findEx(rest, dict)?.at ?? 0) + (findEx(rest, dict)?.len ?? 0)).trim();
+      const qm = before.match(QTY_RE) || after.replace(/^[x×*:]\s*/, '').match(QTY_RE);
+      if (qm) q = unitFix(qm[1]);
+      if (/^cal\b|^calorie/i.test(after) && /^\d+$/.test(q)) q += 'cal';
+      if (/^(m|meter|미터)\b/i.test(after) && /^\d+$/.test(q)) q += 'm';
+      const known = ex.known;
+      out.moves.push({q, n:ex.name, w, isNew:!known});
+      out.lines.push({raw, kind:'move'});
+    }
+    if (out.cap) out.notes.unshift(`타임캡 ${out.cap}분`);
+    if (out.every) out.notes.unshift(`${out.every}분마다`);
+    const f = out.fmts[0]?.id;
+    out.res = f === 'amrap' ? 'rr' : f === 'fortime' || f === 'igyg' || f === 'chipper' ? 'time' : f === 'tabata' ? 'reps' : f === 'deathby' ? 'rr' : f === 'emom' ? 'text' : 'text';
+    if (out.pats.some(p => p.t === 'scheme')) out.moves.forEach(m => { if (m.q === out.pats.find(p => p.t === 'scheme').v) m.q = ''; });
+    return out;
+  }
+  /* a typed exercise name written another way (t2b, toes-to-bars) → the saved exercise's name, or '' */
+  function sameEx(txt, exercises) { const k = key(txt); if (!k) return '';
+    const f = findEx(txt, dictFrom(exercises)); return f && f.known && f.at <= 0 && f.len >= k.replace(/ /g, '').length - 2 ? f.name : ''; }
+  root.parseWod = parseWod; root.sameEx = sameEx;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+/* a name written another way (t2b, toes-to-bars) finds the saved exercise too */
+const findEx = name => state.exercises.find(e => exIs(e, name)) || (name && String(name).trim() && state.exercises.find(e => e.name === sameEx(name, state.exercises)));
 /* WOD card: each part is a frame (format + pattern) followed by its exercises; a frame can be inserted between exercises */
 function usage() { const c = {}; for (const s of state.sessions) for (const it of s.items) { if (it.type === 'ex') c[it.exId] = (c[it.exId] || 0) + 1; else wodMoves(it).forEach(m => { if (m.exId) c[m.exId] = (c[m.exId] || 0) + 1; }); } return c; }
 /* one 방식 row: tap to pick or unpick, several at once; a chip with N shows its number box below */
@@ -1143,7 +1276,7 @@ function wodCard(it, i) {
   const savedIn = it.wodId && (state.mine.find(w => w.id === it.wodId)?.col || (state.mine.some(w => w.id === it.wodId) ? 'mine' : state.named.some(w => w.id === it.wodId && w.own) && state.wodTabs.some(x => x.k === 'named') ? 'named' : '')), mine = !!savedIn;
   return `<div class="card wc">
     <div class="row between" style="gap:8px"><input class="inp big" data-wn="${i}" value="${esc(it.name)}" placeholder="${tpl ? 'WOD 제목' : 'Daily WOD'}" aria-label="WOD 제목" style="font-family:var(--num);font-weight:800;font-size:28px;padding:6px 10px">
-      ${it.wodId && !tpl ? '<span class="pill lime">불러옴</span>' : ''}${tpl ? '' : `<button class="pill" style="font-size:12px;padding:5px 10px;white-space:nowrap" data-action="pick-wod" data-i="${i}">불러오기</button>`}${tpl || curItems().length < 2 ? '' : `<button class="icon" data-action="remove-item" data-i="${i}" aria-label="WOD 빼기">✕</button>`}</div>
+      ${it.wodId && !tpl ? '<span class="pill lime">불러옴</span>' : ''}<button class="pill" style="font-size:12px;padding:5px 10px;white-space:nowrap" data-action="pick-wod" data-i="${i}">${tpl ? '글 붙여넣기' : '불러오기'}</button>${tpl || curItems().length < 2 ? '' : `<button class="icon" data-action="remove-item" data-i="${i}" aria-label="WOD 빼기">✕</button>`}</div>
     ${tpl ? '' : `<div class="row" style="gap:6px;flex-wrap:wrap">${cats().map(c => `<button class="chip sm" aria-pressed="${cardCat(it) === c.k}" data-action="card-cat" data-i="${i}" data-v="${c.k}"><i class="dot" style="background:${c.color}"></i>${esc(c.label)}</button>`).join('')}</div>`}
     ${it.parts.map((p, pi) => partHtml(it, i, p, pi)).join('')}
     ${freq.length ? `<div class="lbl">자주 한 운동</div><div class="chips2">${freq.map(e => `<button class="c2" data-action="mv-quick" data-i="${i}" data-id="${e.id}">${esc(e.name)}</button>`).join('')}</div>` : ''}
@@ -1363,9 +1496,34 @@ function sheetPickEx() {
     <input class="search" id="pickQ" type="search" placeholder="운동 검색" value="${esc(ui.pickQ)}" aria-label="운동 검색">
     <div class="chips">${[{k:'all', label:'전체'}, ...exCats()].map(c => `<button class="chip sm" aria-pressed="${ui.pickCat === c.k}" data-action="pick-cat" data-v="${c.k}">${c.label}</button>`).join('')}</div>
     <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`
-  : `<div class="row between"><h2 class="disp" style="font-size:30px">WOD 불러오기</h2>${ui.swapCard != null && !isBlankCard(curItems()[ui.swapCard] || {parts:[]}) ? '<span class="sub" style="font-size:12px">지금 카드 내용이 바뀌어요</span>' : ''}<button class="pill" data-action="close-sheet">닫기</button></div>
-    <input class="search" id="pickQ" type="search" placeholder="WOD 검색" value="${esc(ui.pickQ)}" aria-label="WOD 검색">
-    <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`);
+  : `<div class="row between"><h2 class="disp" style="font-size:30px">${ui.page === 'tpl' ? '글 붙여넣기' : 'WOD 불러오기'}</h2>${ui.swapCard != null && !isBlankCard(curItems()[ui.swapCard] || {parts:[]}) ? '<span class="sub" style="font-size:12px">지금 카드 내용이 바뀌어요</span>' : ''}<button class="pill" data-action="close-sheet">닫기</button></div>
+    ${pasteBox()}
+    ${ui.paste?.r || ui.page === 'tpl' ? '' : `<input class="search" id="pickQ" type="search" placeholder="저장한 WOD 찾기" value="${esc(ui.pickQ)}" aria-label="WOD 검색">
+    <div id="pickList" style="display:flex;flex-direction:column;gap:10px">${pickList()}</div>`}`);
+}
+/* 글 붙여넣기: paste a WOD text, check what was read, then fill the card */
+const PASTE_FMT = {chipper:'fortime'};
+const PASTE_PAT = {scheme:v => v, rounds:v => `${v} 라운드`, time:v => `${v}분`, team:v => `Team of ${v}`};
+function pasteBox() {
+  const P = ui.paste || {text:''}, r = P.r;
+  if (!r) return `<div class="card" style="border:1px solid var(--lime);gap:8px"><div class="row between"><b style="color:var(--lime)">글 붙여넣기</b><span class="sub" style="font-size:12px">단톡방·인스타 WOD</span></div>
+    <textarea class="inp" id="pasteT" rows="4" placeholder="여기에 WOD 글을 붙여넣어요" aria-label="WOD 글" style="font-size:16px;min-height:96px">${esc(P.text)}</textarea>
+    <button class="btn lime" data-action="paste-read">알아보기</button></div>`;
+  const sch = r.pats.find(x => x.t === 'scheme')?.v || '';
+  const chips = [...r.fmts.slice(0, 1).map(f => f.label), ...r.pats.map(x => PASTE_PAT[x.t]?.(x.v)).filter(Boolean)];
+  return `<div class="card" style="border:1px solid var(--lime);gap:10px"><div class="eb">알아본 내용 · 맞는지 보고 넣어요</div>
+    <div class="eb">구성</div><div class="chips2">${chips.map(c => `<span class="c2 on">${esc(c)}</span>`).join('') || '<span class="sub">못 찾았어요</span>'}</div>
+    <div class="eb">운동</div>${r.moves.map(m => `<div class="pmv"><span class="n">${esc(m.q || sch || '-')}</span><span class="t${m.isNew ? ' new' : ''}">${esc(m.n)}${m.isNew ? '<small>새 운동 · 저장하면 운동목록에 추가</small>' : ''}</span><span class="n">${esc(m.w || '-')}</span></div>`).join('') || '<span class="sub">못 찾았어요</span>'}
+    ${r.res !== 'text' ? `<div class="row between"><span class="eb">결과 형식</span><span class="c2 on">${RES_TYPES[r.res].label}</span></div>` : ''}
+    ${r.notes.length ? `<div class="eb">메모로 들어가는 줄</div><div class="sub">${r.notes.map(esc).join('<br>')}</div>` : ''}
+    <div class="row" style="gap:8px"><button class="btn out small" style="flex:1" data-action="paste-again">다시 붙여넣기</button><button class="btn lime small" style="flex:1.6" data-action="paste-apply" ${r.moves.length || r.fmts.length || r.pats.length ? '' : 'disabled'}>카드에 넣기</button></div></div>`;
+}
+function pasteItem(r, base) {
+  const fid = r.fmts[0] && (PASTE_FMT[r.fmts[0].id] || r.fmts[0].id), f = fid && (state.formats.find(x => x.id === fid) || DEF_FORMATS.find(x => x.id === fid));
+  const pats = r.pats.map((x, k) => { const t = chipById(x.t) || DEF_PATTERNS.find(y => y.id === x.t); return t ? {...patFrom(t, x.v), at:0, o:k} : null; }).filter(Boolean);
+  const it = wodItem({id:null, name:base?.name || '', resT:r.res !== 'text' ? r.res : undefined, parts:[{fmt:f ? fmtCopy(f) : {...NO_FMT}, fmtAt:0, fmtO:-1, pats, moves:r.moves.map(m => ({n:m.n, q:m.q.replace(/^(\d+)$/, '$1'), w:m.w}))}]});
+  it.wodId = null; if (base?.cat) it.cat = base.cat;
+  return it;
 }
 function sheetWod(id) {
   ui.sheet = () => sheetWod(id);
@@ -1560,7 +1718,13 @@ const A = {
   'add-ex': el => { if (ui.pickFor) { const f = ui.pickFor, p = curItems()[f.i]?.parts[f.pi], ex = exById(el.dataset.id); if (p && ex) putMove(p, ex); ui.pickFor = null; closeSheet(); render(true); return; }
     const it = exItem(el.dataset.id, ui.draft.date); ui.draft.items.push(it); closeSheet(); render(true); toast(it.prefilled ? '지난 기록을 채웠어요' : '운동을 추가했어요'); setTimeout(() => $('#screen').scrollTo({top:$('#screen').scrollHeight, behavior:'smooth'}), 30); },
   'record-daily': () => openEditor(newDraft(recordDate())),
-  'pick-wod': el => { ui.pickFor = null; ui.swapCard = el.dataset.i !== undefined ? +el.dataset.i : null; ui.pickQ = ''; sheetPickEx(); },
+  'paste-read': () => { const t = $('#pasteT')?.value || ''; if (!t.trim()) { toast('WOD 글을 붙여넣어 주세요'); return; } ui.paste = {text:t, r:parseWod(t, state.exercises)}; refreshSheet(); },
+  'paste-again': () => { ui.paste = {text:ui.paste?.text || ''}; refreshSheet(); $('#pasteT')?.focus(); },
+  'paste-apply': () => { const r = ui.paste?.r; if (!r) return; const items = curItems(), k = ui.swapCard ?? 0, it = pasteItem(r, items[k]);
+    items[k] = it; ui.swapCard = null;
+    if (r.notes.length) { if (ui.page === 'tpl') ui.tdraft.note = [ui.tdraft.note, ...r.notes].filter(Boolean).join('\n'); else ui.draft.memo = [ui.draft.memo, ...r.notes].filter(Boolean).join('\n'); }
+    ui.paste = null; closeSheet(); render(true); toast('카드에 넣었어요. 맞는지 보고 고쳐 주세요'); },
+  'pick-wod': el => { ui.paste = null; ui.pickFor = null; ui.swapCard = el.dataset.i !== undefined ? +el.dataset.i : null; ui.pickQ = ''; sheetPickEx(); },
   'add-daily': () => { ui.draft.items.push(dailyItem()); closeSheet(); render(true); setTimeout(() => { const t = document.querySelectorAll('[data-wn]'); t[t.length - 1]?.closest('.card')?.scrollIntoView({block:'start'}); }, 30); },
   'chip-add': el => sheetChipAdd(+el.dataset.i, +el.dataset.pi),
   'chip-add-pick': el => { const i = el.dataset.i, pi = el.dataset.pi, p = curItems()[+i].parts[+pi], x = chipById(el.dataset.v); if (!x) return;
