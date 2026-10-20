@@ -963,11 +963,14 @@ function dayVolHtml(ds, list) {
     ${pills.length ? `<div class="row wrap" style="gap:6px">${pills.map(p => `<span class="pill">${p}</span>`).join('')}</div>` : ''}
     ${rows.length > 1 ? `<div>${rows.map(({s, v}) => `<div class="vrow"><span class="grow"><i style="background:${catOf(sessionCat(s)).color}"></i>${esc(s.title || '운동')}</span>${v.kg ? `<span class="vtrack"><span style="width:${Math.round(v.kg / max * 100)}%;background:${catOf(sessionCat(s)).color}"></span></span><span class="n">${kgTxt(v.kg)}</span>` : `<span class="sub">${[v.km ? kmTxt(v.km) : '', v.reps ? v.reps + '회' : ''].filter(Boolean).join(' · ')}</span>`}</div>`).join('')}</div>` : ''}</div>`;
 }
+/* plans on a day page: the day's planned items, and adding a plan on a future day */
+function dayPlansHtml(ds) { const ps = plansOn(ds);
+  return `${ps.length ? `<div class="card list" style="padding:4px 16px">${ps.map(p => `<button class="it" data-action="edit-plan" data-id="${p.id}"><span class="bar plan" style="height:18px;border-color:${catOf(p.cat).color}"></span><span class="grow"><span class="t" style="display:block">${esc(p.title || '계획')}</span><span class="meta" style="display:block">${esc([repeatText(p), planContents(p)].filter(Boolean).join(' · '))}</span></span><span class="pill lime">계획</span></button>`).join('')}</div>` : ''}${ds > TODAY() ? `<button class="btn lime" data-action="new-plan" data-date="${ds}">+ ${md(ds)} 계획 추가</button>` : ''}`; }
 function pageDay() {
   const ds = ui.dayDate, list = sessionsOn(ds);
   const dates = [...new Set(sorted().map(s => s.date))], i = dates.indexOf(ds);
   const prev = dates[i - 1], next = dates[i + 1];
-  if (!list.length) return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button><span class="eb">${md(ds)} ${WD[parseYmd(ds).getDay()]}</span></div><div class="empty">이날은 기록이 없어요.</div>${ds <= TODAY() ? `<button class="btn lime" data-action="day-record" data-date="${ds}">+ ${md(ds)} 기록하기</button>` : ''}`;
+  if (!list.length) return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button><span class="eb">${md(ds)} ${WD[parseYmd(ds).getDay()]}</span></div>${ds > TODAY() && plansOn(ds).length ? '' : `<div class="empty">이날은 ${ds > TODAY() ? '계획이' : '기록이'} 없어요.</div>`}${dayPlansHtml(ds)}${ds <= TODAY() ? `<button class="btn lime" data-action="day-record" data-date="${ds}">+ ${md(ds)} 기록하기</button>` : ''}`;
   return `<div class="row between"><button class="pill" data-action="close-page">‹ 캘린더</button><div class="row" style="gap:4px"><button class="icon" data-action="day-nav" data-v="${prev || ''}" ${prev ? '' : 'disabled style="opacity:.25"'} aria-label="이전 기록">‹</button><span class="eb">${md(ds)} ${WD[parseYmd(ds).getDay()]}</span><button class="icon" data-action="day-nav" data-v="${next || ''}" ${next ? '' : 'disabled style="opacity:.25"'} aria-label="다음 기록">›</button></div><span style="width:70px"></span></div>
   <div id="daySwipe" style="touch-action:pan-y;display:flex;flex-direction:column;gap:16px">${dayVolHtml(ds, list)}${list.map(s => {
     const plan = state.plans.find(p => p.id === s.planId);
@@ -990,7 +993,7 @@ function pageDay() {
       ${s.memo ? `<div class="card"><div class="eb" style="margin-bottom:6px">메모</div><div style="line-height:1.6">${esc(s.memo)}</div></div>` : ''}
       <div class="row" style="gap:8px"><button class="btn out small" data-action="edit-session" data-id="${s.id}">수정</button><button class="btn danger small" data-action="del-session" data-id="${s.id}">${ui.confirm === 'del-' + s.id ? '한 번 더 누르면 삭제' : '삭제'}</button></div>`;
   }).join('<div style="height:8px;border-top:1px solid var(--line)"></div>')}
-  ${ds <= TODAY() ? `<button class="btn lime" data-action="day-record" data-date="${ds}">+ ${md(ds)} 기록 추가</button>` : ''}</div>`;
+  ${dayPlansHtml(ds)}${ds <= TODAY() ? `<button class="btn lime" data-action="day-record" data-date="${ds}">+ ${md(ds)} 기록 추가</button>` : ''}</div>`;
 }
 
 /* editor */
@@ -1974,7 +1977,7 @@ document.addEventListener('click', e => {
   const tab = e.target.closest('.tab'); if (tab) { ui.tab = tab.dataset.tab; ui.page = null; ui.confirm = null; closeSheet(); return render(); }
   const dc = e.target.closest('[data-date]:not([data-action])');
   if (dc) { const ds = dc.dataset.date, now = Date.now();
-    if (lastTap.ds === ds && now - lastTap.t < 350) { lastTap = {ds:null, t:0}; if (ds > TODAY() && !sessionsOn(ds).length) openPlan(newPlanDraft(ds)); else openDay(ds); return; }
+    if (lastTap.ds === ds && now - lastTap.t < 350) { lastTap = {ds:null, t:0}; openDay(ds); return; }
     lastTap = {ds, t:now}; ui.sel = ds; if (!ds.startsWith(ui.month)) ui.month = ds.slice(0, 7); render(true); return; }
   const el = e.target.closest('[data-action]'); if (!el) return;
   const a = el.dataset.action;
