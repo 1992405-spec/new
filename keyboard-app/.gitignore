@@ -1,0 +1,6 @@
+AIKeyboard.xcodeproj/
+App/Info.plist
+Keyboard/Info.plist
+*.entitlements
+build/
+xcuserdata/

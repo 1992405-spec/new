@@ -1,0 +1,24 @@
+name: keyboard-app build
+
+on:
+  push:
+    paths: ['keyboard-app/**', '.github/workflows/keyboard-app.yml']
+  pull_request:
+    paths: ['keyboard-app/**', '.github/workflows/keyboard-app.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: keyboard-app
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Build (unsigned, simulator)
+        run: |
+          xcodebuild -project AIKeyboard.xcodeproj -scheme AIKeyboard \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build
