@@ -11,6 +11,8 @@
   python bot.py run       # 계속 실행 (POLL_SEC 마다 확인)
   python bot.py once      # 한 번만 확인하고 끝 (cron 으로 하루 몇 번 돌릴 때)
   python bot.py status    # 현재 신호와 잔고
+  python bot.py check     # API 키가 잘 되는지 확인 (주문 없음)
+  python bot.py test-order  # 실전 키로 6,000원 사고 바로 팔아보기 (수수료 약 6원)
 """
 import argparse
 import json
@@ -274,7 +276,7 @@ def main(argv=None):
     load_env()
     cfg = Config.from_env()
     ap = argparse.ArgumentParser(description="업비트 비트코인 50일선 추세추종 봇")
-    ap.add_argument("cmd", choices=["run", "once", "status"])
+    ap.add_argument("cmd", choices=["run", "once", "status", "check", "test-order"])
     args = ap.parse_args(argv)
 
     state_path = HERE / ("state_paper.json" if cfg.dry_run else "state.json")
@@ -292,6 +294,29 @@ def main(argv=None):
 
     if args.cmd == "status":
         print(bot.status())
+        return
+    if args.cmd == "check":
+        try:
+            b = client.balances()
+        except Exception as e:
+            print(f"실패: {e}\n→ .env 의 키, 업비트에 등록한 IP, '자산조회' 권한을 확인하세요.")
+            return
+        print("API 키 정상. 잔고:", {k: v for k, v in b.items() if v})
+        print("모드:", "모의투자(DRY_RUN=1)" if cfg.dry_run else "실전(DRY_RUN=0)")
+        return
+    if args.cmd == "test-order":
+        live = LiveExchange(client, cfg)
+        krw, _ = live.balances()
+        if krw < 6100:
+            print(f"원화가 6,100원 이상 있어야 합니다 (지금 {krw:,.0f}원)")
+            return
+        if input("실제로 6,000원어치 사고 바로 팝니다. 진행할까요? (yes 입력): ").strip() != "yes":
+            return
+        vol, avg, cost = live.buy(6000)
+        print(f"매수 체결: {avg:,.0f}원 x {vol:.8f} = {cost:,.0f}원")
+        vol2, avg2, got = live.sell(vol)
+        print(f"매도 체결: {avg2:,.0f}원 x {vol2:.8f} = {got:,.0f}원  → 비용 {cost - got:,.0f}원")
+        print("실전 주문 정상. (봇 장부에는 기록하지 않음)")
         return
     if args.cmd == "once":
         bot.tick()
