@@ -70,6 +70,12 @@ class UpbitClient:
             params["to"] = to
         return self._get(f"/v1/candles/minutes/{unit}", params)
 
+    def day_candles(self, market, to=None, count=200):
+        params = {"market": market, "count": count}
+        if to:
+            params["to"] = to
+        return self._get("/v1/candles/days", params)
+
     # ---- 계정 ----
     def balances(self):
         return {a["currency"]: float(a["balance"]) for a in self._get("/v1/accounts", auth=True)}

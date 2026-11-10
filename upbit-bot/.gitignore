@@ -4,3 +4,4 @@ state*.json
 bot.log
 candles_*.csv
 __pycache__/
+days_*.json
