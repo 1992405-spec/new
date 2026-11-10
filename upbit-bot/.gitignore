@@ -1,0 +1,6 @@
+.env
+state*.json
+*.tmp
+bot.log
+candles_*.csv
+__pycache__/
