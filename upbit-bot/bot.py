@@ -4,6 +4,8 @@
 - 어제 종가 > 최근 50일 종가 평균(50일선)  → '보유': 원화가 있으면 전부 비트코인으로 산다.
 - 어제 종가 <= 50일선                      → '현금': 비트코인을 전부 판다.
 - 매달 10일 전후로 입금한 원화는 '보유' 상태면 바로 사고, '현금' 상태면 신호가 바뀔 때까지 기다린다.
+- 봇은 자기가 산 비트코인(bot_btc)만 판다. 원래 갖고 있던 비트코인은 건드리지 않는다.
+- 원화는 KRW_RESERVE 를 뺀 전부를 쓴다.
 
 사용법
   python bot.py run       # 계속 실행 (POLL_SEC 마다 확인)
@@ -67,6 +69,7 @@ class State:
     signal: str = ""              # 'hold' | 'cash'
     close: float = 0.0
     ma: float = 0.0
+    bot_btc: float = 0.0          # 봇이 산 비트코인 (봇은 이것만 판다)
     history: list = field(default_factory=list)   # 최근 거래 기록
     paper_krw: float = 0.0
     paper_btc: float = 0.0
@@ -212,12 +215,16 @@ class Bot:
             spend = int((krw - self.cfg.krw_reserve) / (1 + self.cfg.fee))
             if spend >= self.cfg.min_order:
                 vol, avg, cost = self.ex.buy(spend)
+                self.st.bot_btc += vol
                 self._record(now, "buy", vol, avg, cost)
-                self._say(f"[매수] {avg:,.0f}원 x {vol:.8f} = {cost:,.0f}원")
+                self._say(f"[매수] {avg:,.0f}원 x {vol:.8f} = {cost:,.0f}원 (봇 보유 {self.st.bot_btc:.8f})")
         elif self.st.signal == "cash":
-            price = self.ex.price()
-            if btc * price >= self.cfg.min_order:
-                vol, avg, got = self.ex.sell(btc)
+            sell_vol = min(self.st.bot_btc, btc)     # 봇이 산 만큼만 판다
+            if sell_vol < self.st.bot_btc * 0.999:
+                self.log.warning(f"봇 장부({self.st.bot_btc:.8f})보다 실제 잔고({btc:.8f})가 적어 잔고만큼만 팝니다")
+            if sell_vol * self.ex.price() >= self.cfg.min_order:
+                vol, avg, got = self.ex.sell(sell_vol)
+                self.st.bot_btc = max(0.0, self.st.bot_btc - vol)
                 self._record(now, "sell", vol, avg, got)
                 self._say(f"[매도] {avg:,.0f}원 x {vol:.8f} = {got:,.0f}원 (현금으로 대기)")
 
@@ -232,10 +239,13 @@ class Bot:
             f"  어제 종가 {self.st.close:,.0f}원 / {self.cfg.ma_days}일선 {self.st.ma:,.0f}원 "
             f"({(self.st.close / self.st.ma - 1) * 100:+.1f}%)",
             f"  현재가 {price:,.0f}원",
-            f"잔고: 원화 {krw:,.0f}원, 비트코인 {btc:.8f} (≈ {btc * price:,.0f}원), 합계 {krw + btc * price:,.0f}원",
+            f"원화 {krw:,.0f}원 (봇이 쓰는 돈: {max(0, krw - self.cfg.krw_reserve):,.0f}원)",
+            f"비트코인 봇 보유분 {self.st.bot_btc:.8f} (≈ {self.st.bot_btc * price:,.0f}원)  ← 신호 따라 사고팜",
+            f"비트코인 기존 보유분 {max(0.0, btc - self.st.bot_btc):.8f} "
+            f"(≈ {max(0.0, btc - self.st.bot_btc) * price:,.0f}원)  ← 봇이 건드리지 않음",
         ]
         if self.cfg.dry_run:
-            tot = krw + btc * price * (1 - self.cfg.fee)
+            tot = krw + self.st.bot_btc * price * (1 - self.cfg.fee)
             if self.st.paper_invested:
                 lines.append(f"  모의투자 넣은 돈 {self.st.paper_invested:,.0f}원 → "
                              f"{(tot / self.st.paper_invested - 1) * 100:+.1f}%")
