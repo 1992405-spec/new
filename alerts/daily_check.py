@@ -1,4 +1,4 @@
-"""매일 오전 알림용: 비트코인 50일선 신호 + ISA(나스닥100 70 / 금 30) 적립 안내와 하락 경고. 공개 시세만 사용."""
+"""매일 오전 알림용: 비트코인 50일선 신호 + ISA(나스닥100 70 / 금 30) 전략 수정 필요 여부. 공개 시세만 사용."""
 import json, urllib.request, time
 from datetime import datetime, timedelta, timezone
 KST = timezone(timedelta(hours=9)); now = datetime.now(KST); today = now.date().isoformat()
@@ -25,18 +25,21 @@ try:  # ISA: KODEX 미국나스닥100(379810) 70 / ACE KRX금현물(411060) 30, 
     nq, gd = series("379810"), series("411060")
     y0 = f"{now.year}-01-01"
     p0 = lambda s: next((p for d, p in s if d >= y0), s[-1][1])
-    a, b = 0.7 * nq[-1][1] / p0(nq), 0.3 * gd[-1][1] / p0(gd)
-    hi, hi_prev = max(p for _, p in nq[-250:]), max(p for _, p in nq[-251:-1])
-    dd, dd_prev = nq[-1][1] / hi - 1, nq[-2][1] / hi_prev - 1
+    def weight(i):  # 1월 첫 거래일에 70:30이었다고 보고, 가격 변동만 반영한 나스닥 비중
+        a, b = 0.7 * nq[i][1] / p0(nq), 0.3 * gd[i][1] / p0(gd)
+        return a / (a + b) * 100
+    def plan_bad(i):  # 기본 매수(나스닥 3주 + 금 1주)를 계속 쓸 수 없는지
+        n, g = 3 * nq[i][1], gd[i][1]
+        return n + g > 100000 or not (60 <= n / (n + g) * 100 <= 85)
+    w, wp = weight(-1), weight(-2)
+    out["isa"] = {"기준일": nq[-1][0], "나스닥100_1주": nq[-1][1], "금_1주": gd[-1][1],
+                  "추정_나스닥비중%": round(w, 1),
+                  "비중_벗어남_새로": ("높음" if w > 80 >= wp else "낮음" if w < 60 <= wp else None),
+                  "기본매수_못씀_새로": plan_bad(-1) and not plan_bad(-2),
+                  "기본매수_금액": round(3 * nq[-1][1] + gd[-1][1])}
     pn, pg = nq[-1][1], gd[-1][1]
-    best = min(((i, j) for i in range(0, 5) for j in range(0, 5) if 0 < i * pn + j * pg <= 100000),
-               key=lambda t: (abs(t[0] * pn / (t[0] * pn + t[1] * pg) - 0.7) + (100000 - t[0] * pn - t[1] * pg) / 100000 * 0.5))
-    out["isa"] = {"기준일": nq[-1][0], "나스닥100_1주": pn, "금_1주": pg,
-                  "올해_나스닥%": round((pn / p0(nq) - 1) * 100, 1), "올해_금%": round((pg / p0(gd) - 1) * 100, 1),
-                  "가격변동만_반영한_나스닥비중%": round(a / (a + b) * 100, 1),
-                  "기본_매수": f"나스닥100 {best[0]}주 + 금 {best[1]}주 = {best[0] * pn + best[1] * pg:,.0f}원",
-                  "나스닥_1년고점대비%": round(dd * 100, 1),
-                  "하락구간_새로진입": next((t for t in (-30, -20) if dd * 100 <= t < dd_prev * 100), None),
-                  "하락구간_회복": dd_prev * 100 <= -20 < dd * 100}
+    i, j = min(((i, j) for i in range(5) for j in range(5) if 0 < i * pn + j * pg <= 100000),
+               key=lambda t: abs(t[0] * pn / (t[0] * pn + t[1] * pg) - 0.7) + (100000 - t[0] * pn - t[1] * pg) / 200000)
+    out["isa"]["새_매수안"] = f"나스닥100 {i}주 + 금 {j}주 = {i * pn + j * pg:,.0f}원"
 except Exception as e: out["isa"] = {"error": str(e)}
 print(json.dumps(out, ensure_ascii=False, indent=1))
